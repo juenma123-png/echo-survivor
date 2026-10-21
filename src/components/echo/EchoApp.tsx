@@ -9,6 +9,7 @@ import {
   Magnet,
   Maximize2,
   Pause,
+  RotateCw,
   Shield,
   Skull,
   Sparkles,
@@ -81,6 +82,35 @@ export function EchoApp() {
   const stickId = useRef<number | null>(null);
   const [hud, setHud] = useState<HudState>(emptyHud);
   const [stick, setStick] = useState({ x: 0, y: 0, on: false });
+  /** true en móvil/tablet con la pantalla en vertical: pedimos girar el dispositivo. */
+  const [needsRotate, setNeedsRotate] = useState(false);
+
+  /* Detecta orientación vertical en dispositivos táctiles (en PC solo se ponen barras laterales). */
+  useEffect(() => {
+    const portrait = window.matchMedia("(orientation: portrait)");
+    const touch = window.matchMedia("(pointer: coarse)");
+    const update = () => setNeedsRotate(portrait.matches && touch.matches);
+    update();
+    portrait.addEventListener("change", update);
+    return () => portrait.removeEventListener("change", update);
+  }, []);
+
+  /* Si giran el móvil a vertical en plena partida, se pausa para no perder la run. */
+  useEffect(() => {
+    if (needsRotate && hud.screen === "playing") gameRef.current?.togglePause();
+  }, [needsRotate, hud.screen]);
+
+  /** Intenta pantalla completa + bloqueo horizontal (solo funciona en algunos móviles, tras un toque). */
+  const enterLandscape = useCallback(() => {
+    if (!window.matchMedia("(pointer: coarse)").matches) return;
+    try {
+      void document.documentElement.requestFullscreen?.()?.catch(() => undefined);
+      const so = screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
+      void so.lock?.("landscape")?.catch(() => undefined);
+    } catch {
+      /* el navegador no lo permite: queda el aviso de girar */
+    }
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -127,10 +157,15 @@ export function EchoApp() {
 
   return (
     <div
-      ref={wrapRef}
-      className="relative h-dvh w-full overflow-hidden bg-void text-ice select-none"
+      className="relative flex h-dvh w-full items-center justify-center overflow-hidden bg-void text-ice select-none"
       style={{ touchAction: "none" }}
     >
+      {/* Escenario horizontal 16:9: lienzo, HUD y menús viven dentro y se escalan juntos. */}
+      <div
+        ref={wrapRef}
+        className="relative overflow-hidden bg-void"
+        style={{ width: "min(100vw, calc(100dvh * 16 / 9))", aspectRatio: "16 / 9", touchAction: "none" }}
+      >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
       {playing && <Hud hud={hud} onPause={() => g()?.togglePause()} onDismiss={(i) => g()?.dismissEco(i)} />}
@@ -168,7 +203,16 @@ export function EchoApp() {
         />
       )}
 
-      {hud.screen === "menu" && <Menu hud={hud} go={(s) => g()?.open(s)} start={() => g()?.startRun()} />}
+      {hud.screen === "menu" && (
+        <Menu
+          hud={hud}
+          go={(s) => g()?.open(s)}
+          start={() => {
+            enterLandscape();
+            g()?.startRun();
+          }}
+        />
+      )}
       {hud.screen === "paused" && (
         <PauseMenu
           resume={() => g()?.resume()}
@@ -201,6 +245,15 @@ export function EchoApp() {
           set={(k, v) => g()?.setSetting(k, v)}
           back={() => g()?.open(overlay && hud.time > 0 ? "paused" : "menu")}
         />
+      )}
+      </div>
+
+      {needsRotate && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-void px-8 text-center">
+          <RotateCw className="size-12 text-cyan" />
+          <p className="font-display text-2xl font-bold">Gira tu dispositivo</p>
+          <p className="max-w-xs text-sm text-muted">Echo Survivor se juega en horizontal. Gíralo para continuar.</p>
+        </div>
       )}
     </div>
   );
@@ -390,7 +443,7 @@ function RoundBtn({
 
 function FullCard({ children }: { children: ReactNode }) {
   return (
-    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-void/80 px-4 backdrop-blur-[2px]">
+    <div className="absolute inset-0 z-30 flex flex-col items-center justify-center overflow-y-auto bg-void/80 px-4 py-2 backdrop-blur-[2px]">
       {children}
     </div>
   );
@@ -406,20 +459,20 @@ function Menu({
   start: () => void;
 }) {
   return (
-    <div className="absolute inset-0 z-30 flex flex-col justify-end bg-gradient-to-t from-void via-void/80 to-transparent px-6 pb-10 pt-16 sm:justify-center sm:px-16">
+    <div className="absolute inset-0 z-30 flex flex-col justify-center overflow-y-auto bg-gradient-to-t from-void via-void/80 to-transparent px-6 py-4 sm:px-16 sm:py-8">
       <p className="mb-2 text-xs font-bold uppercase tracking-[0.35em] text-cyan">Sobrevive · Mejora · Rompe el ciclo</p>
-      <h1 className="font-display text-5xl font-bold leading-[0.9] sm:text-7xl">
+      <h1 className="font-display text-4xl font-bold leading-[0.9] sm:text-5xl md:text-7xl">
         <span className="block text-ice">ECHO</span>
         <span className="block text-magenta">SURVIVOR</span>
       </h1>
-      <p className="mt-4 max-w-md text-sm leading-relaxed text-muted">{GDD_TEXT.pitch}</p>
-      <div className="mt-8 flex flex-wrap gap-3">
+      <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">{GDD_TEXT.pitch}</p>
+      <div className="mt-5 flex flex-wrap gap-3">
         <Primary onClick={start}>Start — Jugar</Primary>
         <GhostBtn onClick={() => go("meta")}>Fragmentos</GhostBtn>
         <GhostBtn onClick={() => go("codex")}>Códice</GhostBtn>
         <GhostBtn onClick={() => go("settings")}>Ajustes</GhostBtn>
       </div>
-      <p className="mt-6 text-xs text-muted">
+      <p className="mt-4 text-xs text-muted">
         Mejor run {formatTime(hud.meta.best)} · {hud.meta.coins} fragmentos · {hud.meta.runs} ciclos
       </p>
     </div>

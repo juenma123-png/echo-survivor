@@ -17,6 +17,8 @@ import {
   SPRITE_URLS,
   TILE,
   UPGRADES,
+  VIEW_H,
+  VIEW_W,
   WORLD,
   type EcoDef,
   type EcoKind,
@@ -141,6 +143,15 @@ interface Enemy {
   animT: number;
   flip: boolean;
   hostileEco?: boolean;
+}
+
+interface Corpse {
+  x: number;
+  y: number;
+  def: EnemyDef;
+  flip: boolean;
+  t: number;
+  dur: number;
 }
 
 interface Proj {
@@ -396,11 +407,21 @@ export class EchoGame {
     ecoQueued: false,
   };
   audio = new Synth();
-  w = 1280;
-  h = 720;
+  /** Tamaño lógico del mundo visible (fijo, horizontal 16:9). */
+  w = VIEW_W;
+  h = VIEW_H;
   dpr = 1;
-  acc = 0;
+  /** Escala entre la resolución lógica y los píxeles CSS del lienzo. */
+  scale = 1;
   last = 0;
+  /** Deriva aleatoria suave que se aplica al movimiento durante el Colapso. */
+  driftX = 0;
+  driftY = 0;
+  driftT = 0;
+  /** Segundos restantes del evento Resonancia (enemigos con +vida). */
+  resonT = 0;
+  /** Cadáveres en animación de muerte (solo visuales). */
+  corpses: Corpse[] = [];
   raf = 0;
   camX = 0;
   camY = 0;
@@ -491,17 +512,25 @@ export class EchoGame {
     }
   }
 
+  /**
+   * Ajusta el lienzo a su contenedor manteniendo una vista horizontal fija (VIEW_W x VIEW_H).
+   * El juego siempre dibuja en coordenadas lógicas; aquí solo se calcula la escala.
+   */
   resize() {
     const parent = this.canvas.parentElement ?? this.canvas;
     const rect = parent.getBoundingClientRect();
-    this.w = Math.max(320, rect.width || window.innerWidth);
-    this.h = Math.max(240, rect.height || window.innerHeight);
+    const cw = Math.max(1, rect.width || window.innerWidth);
+    const ch = Math.max(1, rect.height || window.innerHeight);
+    this.w = VIEW_W;
+    this.h = VIEW_H;
+    this.scale = Math.min(cw / VIEW_W, ch / VIEW_H);
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = Math.floor(this.w * this.dpr);
-    this.canvas.height = Math.floor(this.h * this.dpr);
-    this.canvas.style.width = `${this.w}px`;
-    this.canvas.style.height = `${this.h}px`;
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const k = this.scale * this.dpr;
+    this.canvas.width = Math.max(1, Math.floor(VIEW_W * k));
+    this.canvas.height = Math.max(1, Math.floor(VIEW_H * k));
+    this.canvas.style.width = "100%";
+    this.canvas.style.height = "100%";
+    this.ctx.setTransform(k, 0, 0, k, 0, 0);
   }
 
   private async boot() {
@@ -756,6 +785,9 @@ export class EchoGame {
     this.bossSpawned = false;
     this.eventText = "";
     this.fogT = 0;
+    this.resonT = 0;
+    this.corpses = [];
+    this.driftT = 0;
     this.camX = this.player.x - this.w / 2;
     this.camY = this.player.y - this.h / 2;
     this.trauma = 0;
@@ -891,12 +923,16 @@ export class EchoGame {
   private frame(t: number) {
     const raw = Math.min(0.1, (t - this.last) / 1000 || 0.016);
     this.last = t;
-    this.acc += raw;
-    const step = 1 / 60;
-    while (this.acc >= step) {
+    /*
+     * Paso variable: se actualiza una vez por cuadro con el dt real (en pantallas de 120/144 Hz
+     * el movimiento queda fluido). Si un cuadro tarda mucho se divide en subpasos de ~1/60 s
+     * para no atravesar paredes ni perder colisiones.
+     */
+    const n = Math.max(1, Math.ceil(raw * 60 - 0.001));
+    const step = raw / n;
+    for (let i = 0; i < n; i++) {
       if (this.hitstop > 0) this.hitstop -= step;
       else if (this.screen === "playing") this.update(step);
-      this.acc -= step;
     }
     this.draw();
     if (this.hudDirty) {
@@ -943,10 +979,13 @@ export class EchoGame {
         this.flash("EVENTO — Niebla de los recuerdos");
       } else {
         this.eventText = `Resonancia ${minute}`;
+        this.resonT = CONFIG.resonanceTime;
         this.flash("EVENTO — Resonancia hostil (+vida enemiga)");
       }
     }
     if (this.fogT > 0) this.fogT -= dt;
+    /* La Resonancia dura un tiempo limitado; antes se quedaba activa para siempre. */
+    if (this.resonT > 0) this.resonT -= dt;
 
     if (this.time >= RUN_LENGTH) {
       this.endRun(true);
@@ -1000,20 +1039,44 @@ export class EchoGame {
     }
 
     const solo = p.solitude && this.ecos.length === 0;
-    let spd = p.speed * (solo ? 1.1 : 1);
+    const spd = p.speed * (solo ? 1.1 : 1);
     if (this.collapseT > 0) {
-      mx += rand(-0.45, 0.45);
-      my += rand(-0.45, 0.45);
-      const m2 = Math.hypot(mx, my) || 1;
-      mx /= m2;
-      my /= m2;
+      /*
+       * Colapso: pierdes el control. Una deriva que cambia cada ~0.3 s empuja tu dirección,
+       * pero solo si te estás moviendo (quieto no te arrastra a toda velocidad).
+       */
+      this.driftT -= dt;
+      if (this.driftT <= 0) {
+        this.driftT = rand(0.2, 0.4);
+        this.driftX = rand(-0.7, 0.7);
+        this.driftY = rand(-0.7, 0.7);
+      }
+      if (mx || my) {
+        mx += this.driftX;
+        my += this.driftY;
+        const m2 = Math.hypot(mx, my);
+        if (m2 > 1) {
+          mx /= m2;
+          my /= m2;
+        }
+      }
     }
 
     if (p.dashT > 0) {
       /* inercia del dash */
     } else {
-      p.vx = mx * spd;
-      p.vy = my * spd;
+      /*
+       * Aceleración y fricción exponenciales (independientes de los FPS):
+       * arrancas y frenas con una pequeña inercia en vez de cambiar de golpe.
+       */
+      const rate = mx || my ? CONFIG.moveAccel : CONFIG.moveFriction;
+      const kv = 1 - Math.exp(-rate * dt);
+      p.vx += (mx * spd - p.vx) * kv;
+      p.vy += (my * spd - p.vy) * kv;
+      if (!mx && !my && Math.abs(p.vx) < 4 && Math.abs(p.vy) < 4) {
+        p.vx = 0;
+        p.vy = 0;
+      }
     }
     p.x = clamp(p.x + p.vx * dt, 40, WORLD - 40);
     p.y = clamp(p.y + p.vy * dt, 40, WORLD - 40);
@@ -1043,7 +1106,8 @@ export class EchoGame {
   private autoFire() {
     const p = this.player;
     if (p.fireCd > 0) return;
-    const t = this.nearest(p.x, p.y);
+    /* Solo dispara si hay un enemigo al alcance del proyectil (no desperdicia tiros lejanos). */
+    const t = this.nearest(p.x, p.y, undefined, CONFIG.autoFireRange);
     if (!t) return;
     p.fireCd = CONFIG.fireInterval / p.fireRate;
     p.anim = "attack";
@@ -1118,7 +1182,7 @@ export class EchoGame {
   private spawnEnemy(kind: EnemyKind, near = false) {
     const def = ENEMIES[kind];
     const ramp = 1 + Math.floor(this.time / CONFIG.rampEvery) * CONFIG.enemyScalePerRamp;
-    const reson = this.eventText.startsWith("Resonancia") ? 1.25 : 1;
+    const reson = this.resonT > 0 ? 1.25 : 1;
     let x: number;
     let y: number;
     if (near) {
@@ -1163,9 +1227,9 @@ export class EchoGame {
     return n;
   }
 
-  private nearest(x: number, y: number, ignore?: Enemy): Enemy | null {
+  private nearest(x: number, y: number, ignore?: Enemy, maxDist?: number): Enemy | null {
     let best: Enemy | null = null;
-    let bd = 1e12;
+    let bd = maxDist ? maxDist * maxDist : 1e12;
     for (const e of this.enemies) {
       if (!e.alive || e === ignore) continue;
       const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
@@ -1342,6 +1406,16 @@ export class EchoGame {
   private killEnemy(e: Enemy) {
     e.alive = false;
     this.kills += 1;
+    /* Deja un cadáver visual que se aplasta y desvanece (animación de muerte). */
+    if (this.corpses.length >= 40) this.corpses.shift();
+    this.corpses.push({
+      x: e.x,
+      y: e.y,
+      def: e.def,
+      flip: e.flip,
+      t: 0,
+      dur: e.def.boss ? CONFIG.bossDeathAnim : CONFIG.deathAnim,
+    });
     this.spawnGem(e.x, e.y, e.xp);
     this.burst(e.x, e.y, e.def.boss ? 22 : e.def.elite ? 12 : 6, e.def.elite ? "#e84dff" : "#7dffb0");
     this.addTrauma(e.def.boss ? 0.8 : e.def.elite ? 0.35 : 0.12);
@@ -1689,6 +1763,8 @@ export class EchoGame {
       f.y -= 28 * dt;
     }
     this.floats = this.floats.filter((f) => f.life > 0);
+    for (const c of this.corpses) c.t += dt;
+    this.corpses = this.corpses.filter((c) => c.t < c.dur);
   }
 
   private burst(x: number, y: number, n: number, color: string) {
@@ -1759,6 +1835,9 @@ export class EchoGame {
     for (const g of this.gems) {
       if (!g.alive) continue;
       sprites.push({ y: g.y, draw: () => this.drawGem(g, camX, camY) });
+    }
+    for (const c of this.corpses) {
+      sprites.push({ y: c.y - 1, draw: () => this.drawCorpse(c, camX, camY) });
     }
     for (const e of this.enemies) {
       if (!e.alive) continue;
@@ -1910,6 +1989,20 @@ export class EchoGame {
       ctx.fillStyle = "#ff4d6a";
       ctx.fillRect(x - w / 2, y - e.def.draw * 0.55, w * clamp(e.hp / e.maxHp, 0, 1), 4);
     }
+  }
+
+  /** Animación de muerte: destello blanco, se aplasta hacia el suelo y se desvanece. */
+  private drawCorpse(c: Corpse, camX: number, camY: number) {
+    const k = clamp(c.t / c.dur, 0, 1);
+    const size = c.def.draw;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 1 - k * k;
+    ctx.translate(c.x - camX, c.y - camY + size * 0.5);
+    ctx.scale(1 + 0.3 * k, 1 - 0.75 * k);
+    ctx.translate(0, -size * 0.5);
+    this.drawSheet(this.sprites[c.def.sheet], 0, 0, 0, size, c.flip, k < 0.25);
+    ctx.restore();
   }
 
   private drawEco(ec: EcoAlly, camX: number, camY: number) {

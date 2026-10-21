@@ -8,7 +8,22 @@ export const BOSS_AT = 480;
 export const ELITE_EVERY = 45;
 export const CORDURA_MAX = 100;
 
+/** Resolución lógica fija (horizontal 16:9). El lienzo se escala a la pantalla con barras si hace falta. */
+export const VIEW_W = 1024;
+export const VIEW_H = 576;
+
 export const CONFIG = {
+  /** Qué tan rápido el jugador alcanza su velocidad al moverse (mayor = más ágil). */
+  moveAccel: 17,
+  /** Qué tan rápido frena al soltar las teclas (mayor = frena antes). */
+  moveFriction: 13,
+  /** Alcance máximo del autoataque; no dispara a enemigos más lejos que esto. */
+  autoFireRange: 480,
+  /** Segundos que tarda en desvanecerse un enemigo al morir. */
+  deathAnim: 0.45,
+  bossDeathAnim: 0.9,
+  /** Duración del evento "Resonancia" (enemigos con más vida) en segundos. */
+  resonanceTime: 45,
   spawnInterval0: 1.45,
   spawnIntervalMin: 0.32,
   rampEvery: 25,
