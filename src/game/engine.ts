@@ -4,7 +4,7 @@
  * oleadas, Ecos, Cordura y meta-progresión en localStorage.
  */
 import {
-  BOSS_AT,
+  BOSSES,
   CONFIG,
   CORDURA_MAX,
   ECO_POOL,
@@ -124,6 +124,7 @@ interface Player {
   iframe: number;
   cordura: number;
   hurtT: number;
+  slowT: number;
 }
 
 interface Enemy {
@@ -168,6 +169,7 @@ interface Proj {
   kind: "bolt" | "echo" | "enemy" | "boomerang";
   color: string;
   age: number;
+  slow?: boolean;
 }
 
 interface Gem {
@@ -443,7 +445,7 @@ export class EchoGame {
   collapseT = 0;
   spawnCd = 0;
   eliteCd = ELITE_EVERY;
-  bossSpawned = false;
+  seenBoss = new Set<EnemyKind>();
   eventText = "";
   fogT = 0;
   hint = "";
@@ -767,6 +769,7 @@ export class EchoGame {
       iframe: 0,
       cordura: 0,
       hurtT: 0,
+      slowT: 0,
     };
     this.enemies = [];
     this.projs = [];
@@ -782,7 +785,7 @@ export class EchoGame {
     this.collapseT = 0;
     this.spawnCd = 0.4;
     this.eliteCd = ELITE_EVERY;
-    this.bossSpawned = false;
+    this.seenBoss.clear();
     this.eventText = "";
     this.fogT = 0;
     this.resonT = 0;
@@ -952,6 +955,7 @@ export class EchoGame {
     if (this.msgT > 0) this.msgT -= dt;
     this.trauma = Math.max(0, this.trauma - dt * 1.8);
     p.hurtT = Math.max(0, p.hurtT - dt);
+    p.slowT = Math.max(0, p.slowT - dt);
     p.iframe = Math.max(0, p.iframe - dt);
     p.dashCd = Math.max(0, p.dashCd - dt);
     p.dashT = Math.max(0, p.dashT - dt);
@@ -1039,7 +1043,7 @@ export class EchoGame {
     }
 
     const solo = p.solitude && this.ecos.length === 0;
-    const spd = p.speed * (solo ? 1.1 : 1);
+    const spd = p.speed * (solo ? 1.1 : 1) * (p.slowT > 0 ? 0.55 : 1);
     if (this.collapseT > 0) {
       /*
        * Colapso: pierdes el control. Una deriva que cambia cada ~0.3 s empuja tu dirección,
@@ -1160,32 +1164,38 @@ export class EchoGame {
       this.eliteCd = ELITE_EVERY;
       this.flash("Un Eco mayor ha despertado.");
     }
-    if (!this.bossSpawned && this.time >= BOSS_AT) {
-      this.spawnEnemy("boss");
-      this.bossSpawned = true;
-      this.flash("JEFE — Corrupto del Vacío");
-      this.addTrauma(0.7);
+    for (const b of BOSSES) {
+      if (this.time >= b.at && !this.seenBoss.has(b.kind)) {
+        this.seenBoss.add(b.kind);
+        this.spawnEnemy(b.kind);
+        this.flash(b.banner);
+        this.addTrauma(0.7);
+      }
     }
   }
 
   private rollBasic(): EnemyKind {
     const t = this.time;
-    const r = Math.random();
-    if (t > 240 && r < 0.12) return "specter";
-    if (r < 0.34) return "slime";
-    if (r < 0.52) return "bat";
-    if (r < 0.68) return "spider";
-    if (r < 0.86) return "skeleton";
-    return "specter";
+    const pool: EnemyKind[] = ["slime", "slime", "bat", "spider"];
+    if (t > 45) pool.push("skeleton", "brasa");
+    if (t > 100) pool.push("luz", "bat");
+    if (t > 160) pool.push("armadura", "espora");
+    if (t > 220) pool.push("specter", "sanguijuela", "espora");
+    if (t > 340) pool.push("armadura", "brasa", "luz");
+    return pick(pool);
   }
 
-  private spawnEnemy(kind: EnemyKind, near = false) {
+  private spawnEnemy(kind: EnemyKind, near = false, at?: { x: number; y: number }) {
     const def = ENEMIES[kind];
     const ramp = 1 + Math.floor(this.time / CONFIG.rampEvery) * CONFIG.enemyScalePerRamp;
     const reson = this.resonT > 0 ? 1.25 : 1;
     let x: number;
     let y: number;
-    if (near) {
+    if (at) {
+      const a = Math.random() * TAU;
+      x = at.x + Math.cos(a) * 80;
+      y = at.y + Math.sin(a) * 80;
+    } else if (near) {
       const a = Math.random() * TAU;
       x = this.player.x + Math.cos(a) * 280;
       y = this.player.y + Math.sin(a) * 280;
@@ -1249,6 +1259,103 @@ export class EchoGame {
     this.projs.push({ ...p, alive: true, age: p.age ?? 0 });
   }
 
+  private moveLuz(e: Enemy, dt: number, dx: number, dy: number, dist: number) {
+    e.phase += dt;
+    if (e.phase < 0.65) {
+      e.x += (dx / dist) * e.speed * 0.25 * dt;
+      e.y += (dy / dist) * e.speed * 0.25 * dt;
+    } else if (e.phase < 0.92) {
+      e.x += (dx / dist) * 340 * dt;
+      e.y += (dy / dist) * 340 * dt;
+    } else e.phase = 0;
+  }
+
+  private moveLeech(e: Enemy, dt: number, dx: number, dy: number, dist: number) {
+    let ally: Enemy | null = null;
+    let best = 170 * 170;
+    for (const o of this.enemies) {
+      if (!o.alive || o === e || o.def.boss || o.hp > o.maxHp * 0.82) continue;
+      const d2 = (o.x - e.x) * (o.x - e.x) + (o.y - e.y) * (o.y - e.y);
+      if (d2 < best) {
+        best = d2;
+        ally = o;
+      }
+    }
+    if (ally) {
+      const ox = ally.x - e.x;
+      const oy = ally.y - e.y;
+      const d = Math.hypot(ox, oy) || 1;
+      if (d > 34) {
+        e.x += (ox / d) * e.speed * dt;
+        e.y += (oy / d) * e.speed * dt;
+      } else {
+        e.shoot -= dt;
+        if (e.shoot <= 0) {
+          e.shoot = 1.25;
+          ally.hp = Math.min(ally.maxHp, ally.hp + 10);
+          this.burst(ally.x, ally.y, 4, "#ff5a7a");
+        }
+      }
+      return;
+    }
+    e.x += (dx / dist) * e.speed * dt;
+    e.y += (dy / dist) * e.speed * dt;
+  }
+
+  private ring(e: Enemy, n: number, speed: number, color: string) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + this.time * 0.4;
+      this.spawnProj({
+        x: e.x,
+        y: e.y,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        r: 6,
+        dmg: e.dmg * 0.65,
+        life: 3.4,
+        friendly: false,
+        pierce: 0,
+        kind: "enemy",
+        color,
+      });
+    }
+  }
+
+  private bossTick(e: Enemy, dt: number) {
+    if (e.def.kind === "boss") {
+      e.phase += dt;
+      if (e.hp < e.maxHp * 0.5 && e.phase > 2.4) {
+        e.phase = 0;
+        this.ring(e, 8, 130, "#e84dff");
+      }
+    } else if (e.def.kind === "custodio") {
+      e.shoot -= dt;
+      e.phase += dt;
+      if (e.shoot <= 0) {
+        e.shoot = 5.5;
+        this.spawnEnemy("specter", false, e);
+        this.spawnEnemy("luz", false, e);
+      }
+      if (e.phase > 8) {
+        e.phase = 0;
+        this.fogT = Math.max(this.fogT, 7);
+        this.flash("El Custodio suelta niebla.");
+      }
+    } else if (e.def.kind === "reina") {
+      e.shoot -= dt;
+      e.phase += dt;
+      if (e.shoot <= 0) {
+        e.shoot = 2.2;
+        this.ring(e, 10, 125, "#e879f9");
+      }
+      if (e.phase > 6.5) {
+        e.phase = 0;
+        this.spawnEnemy("brasa", false, e);
+        this.spawnEnemy("brasa", false, e);
+      }
+    }
+  }
+
   private updateEnemies(dt: number) {
     const p = this.player;
     for (const e of this.enemies) {
@@ -1258,23 +1365,29 @@ export class EchoGame {
       const dx = p.x - e.x;
       const dy = p.y - e.y;
       const dist = Math.hypot(dx, dy) || 1;
-      if (e.def.ranged && dist < 420) {
+      if (e.def.kind === "luz") {
+        this.moveLuz(e, dt, dx, dy, dist);
+      } else if (e.def.kind === "sanguijuela") {
+        this.moveLeech(e, dt, dx, dy, dist);
+      } else if (e.def.ranged && dist < 420) {
         e.shoot -= dt;
         if (e.shoot <= 0 && dist > 90) {
-          e.shoot = e.def.boss ? 1.1 : 1.8;
+          e.shoot = e.def.boss ? 1.1 : e.def.kind === "espora" ? 2.1 : 1.8;
           const a = Math.atan2(dy, dx);
+          const slow = e.def.kind === "espora";
           this.spawnProj({
             x: e.x,
             y: e.y,
-            vx: Math.cos(a) * (e.def.boss ? 160 : 170),
-            vy: Math.sin(a) * (e.def.boss ? 160 : 170),
+            vx: Math.cos(a) * (slow ? 120 : e.def.boss ? 160 : 170),
+            vy: Math.sin(a) * (slow ? 120 : e.def.boss ? 160 : 170),
             r: e.def.boss ? 7 : 5,
             dmg: e.dmg,
             life: 3.2,
             friendly: false,
             pierce: 0,
             kind: "enemy",
-            color: "#ff6b9d",
+            color: slow ? "#b6ff6a" : "#ff6b9d",
+            slow,
           });
         }
         if (dist < 160) {
@@ -1285,31 +1398,12 @@ export class EchoGame {
           e.y += (dy / dist) * e.speed * dt;
         }
       } else {
-        e.x += (dx / dist) * e.speed * dt;
-        e.y += (dy / dist) * e.speed * dt;
+        const mul = e.def.kind === "brasa" && dist < 120 ? 1.7 : e.def.kind === "armadura" ? 0.85 : 1;
+        e.x += (dx / dist) * e.speed * mul * dt;
+        e.y += (dy / dist) * e.speed * mul * dt;
       }
-      if (e.def.boss) {
-        e.phase += dt;
-        if (e.hp < e.maxHp * 0.5 && e.phase > 2.4) {
-          e.phase = 0;
-          for (let i = 0; i < 8; i++) {
-            const a = (i / 8) * TAU;
-            this.spawnProj({
-              x: e.x,
-              y: e.y,
-              vx: Math.cos(a) * 130,
-              vy: Math.sin(a) * 130,
-              r: 6,
-              dmg: e.dmg * 0.7,
-              life: 3.6,
-              friendly: false,
-              pierce: 0,
-              kind: "enemy",
-              color: "#e84dff",
-            });
-          }
-        }
-      }
+      if (e.def.kind === "armadura") e.phase += dt;
+      this.bossTick(e, dt);
       e.flip = dx < 0;
       if (e.def.kind !== "specter") {
         const pushed = this.solidAt(e.x, e.y, e.r * 0.72, 0, 0);
@@ -1386,6 +1480,7 @@ export class EchoGame {
         p.hp -= pr.dmg * (1 - p.armor);
         p.hurtT = 0.2;
         p.iframe = 0.15;
+        if (pr.slow) p.slowT = 1.5;
         pr.alive = false;
         this.addTrauma(0.25);
       }
@@ -1394,12 +1489,14 @@ export class EchoGame {
   }
 
   private hurtEnemy(e: Enemy, dmg: number, x: number, y: number) {
-    e.hp -= dmg;
+    let hit = dmg;
+    if (e.def.kind === "armadura" && e.phase % 4 < 1.25) hit *= 0.4;
+    e.hp -= hit;
     e.hit = 0.1;
     this.damageDealt += dmg;
     this.audio.hit();
     this.burst(x, y, 3, "#9ff6ff");
-    this.float(e.x, e.y - 18, `${Math.round(dmg)}`, dmg > this.player.dmg * 1.5 ? "#ffd36a" : "#e8f4ff");
+    this.float(e.x, e.y - 18, `${Math.round(hit)}`, hit > this.player.dmg * 1.5 ? "#ffd36a" : "#e8f4ff");
     if (e.hp <= 0) this.killEnemy(e);
   }
 
@@ -1417,15 +1514,32 @@ export class EchoGame {
       dur: e.def.boss ? CONFIG.bossDeathAnim : CONFIG.deathAnim,
     });
     this.spawnGem(e.x, e.y, e.xp);
+    if (e.def.kind === "brasa") {
+      const p = this.player;
+      if (p.iframe <= 0 && Math.hypot(p.x - e.x, p.y - e.y) < 74) {
+        p.hp -= 22 * (1 - p.armor);
+        p.hurtT = 0.2;
+        p.iframe = 0.25;
+        this.addTrauma(0.35);
+      }
+      for (const o of this.enemies) {
+        if (!o.alive || o === e) continue;
+        if (Math.hypot(o.x - e.x, o.y - e.y) < 66) this.hurtEnemy(o, 10, o.x, o.y);
+      }
+      this.burst(e.x, e.y, 16, "#ff8a3d");
+    }
     this.burst(e.x, e.y, e.def.boss ? 22 : e.def.elite ? 12 : 6, e.def.elite ? "#e84dff" : "#7dffb0");
     this.addTrauma(e.def.boss ? 0.8 : e.def.elite ? 0.35 : 0.12);
     this.hitstop = e.def.boss ? 0.08 : 0.03;
     if (e.def.elite || e.def.boss) {
-      this.coins += e.def.boss ? 120 : 35;
+      const purse = e.def.kind === "reina" ? 180 : e.def.kind === "custodio" ? 90 : e.def.boss ? 120 : 35;
+      this.coins += purse;
       const id = pick(ECO_POOL);
       this.pickups.push({ kind: "echoOrb", x: e.x, y: e.y, used: false, ecoId: id });
       if (e.def.boss) this.pickups.push({ kind: "altar", x: e.x + 70, y: e.y, used: false });
-      this.flash(e.def.boss ? "El Corrupto cae. Un altar y un Eco despiertan." : "Un Eco yace en el suelo. Acércate.");
+      this.flash(
+        e.def.boss ? `${e.def.name} cae. Un altar y un Eco despiertan.` : "Un Eco yace en el suelo. Acércate.",
+      );
     } else if (e.def.kind === "specter") {
       const id = pick(ECO_POOL);
       this.pickups.push({ kind: "echoOrb", x: e.x, y: e.y, used: false, ecoId: id, manual: true });
@@ -1981,6 +2095,23 @@ export class EchoGame {
     const y = e.y - camY;
     const frame = Math.floor(e.animT * (e.def.kind === "bat" ? 10 : 6)) % 4;
     this.drawSheet(this.sprites[e.def.sheet], frame, x, y, e.def.draw, e.flip, e.hit > 0);
+    const ctx = this.ctx;
+    if (e.def.kind === "luz" && e.phase > 0.5 && e.phase < 0.92) {
+      ctx.strokeStyle = "#e8fbff";
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.arc(x, y, e.def.draw * 0.45, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (e.def.kind === "armadura" && e.phase % 4 < 1.25) {
+      ctx.strokeStyle = "#9ff6ff";
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.arc(x, y, e.def.draw * 0.42, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     if (e.def.elite || e.def.boss) {
       const ctx = this.ctx;
       const w = e.def.draw * 0.7;
@@ -1996,12 +2127,14 @@ export class EchoGame {
     const k = clamp(c.t / c.dur, 0, 1);
     const size = c.def.draw;
     const ctx = this.ctx;
+    const death = c.def.death ? this.sprites[c.def.death] : undefined;
+    const frame = death && death.width ? Math.min(3, Math.floor(k * 4)) : 0;
     ctx.save();
     ctx.globalAlpha = 1 - k * k;
     ctx.translate(c.x - camX, c.y - camY + size * 0.5);
-    ctx.scale(1 + 0.3 * k, 1 - 0.75 * k);
+    ctx.scale(1 + (death ? 0.08 : 0.3) * k, 1 - (death ? 0.2 : 0.75) * k);
     ctx.translate(0, -size * 0.5);
-    this.drawSheet(this.sprites[c.def.sheet], 0, 0, 0, size, c.flip, k < 0.25);
+    this.drawSheet(death && death.width ? death : this.sprites[c.def.sheet], frame, 0, 0, size, c.flip, !death && k < 0.25);
     ctx.restore();
   }
 

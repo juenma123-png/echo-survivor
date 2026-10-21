@@ -24,6 +24,11 @@ Roguelite de acción top-down: te mueves, el ataque es automático y cada eco qu
 
 Los disparos enemigos no atraviesan árboles, pilares, rocas ni cristales. Los espectros sí atraviesan el terreno.
 
+## Enemigos nuevos
+
+Brasa (explota), Luz errante (embiste), Armadura hueca (escudo), Sanguijuela (cura aliados), Espora (frena). Jefes a los 4:00 (Custodio de la Niebla), 8:00 (Corrupto) y 12:00 (Reina de los Ecos). Al morir, si hay hoja `*_death`, se reproducen sus cuatro cuadros.
+
+
 ## Arranque
 
 ```bash

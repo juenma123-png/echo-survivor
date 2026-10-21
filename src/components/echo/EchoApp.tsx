@@ -22,7 +22,7 @@ import {
   Zap,
 } from "lucide-react";
 import { EchoGame, formatTime, type HudState, type Screen } from "@/game/engine";
-import { GDD_TEXT, META_SHOP, UPGRADES } from "@/game/config";
+import { ENEMY_NOTES, ENEMIES, GDD_TEXT, META_SHOP, UPGRADES } from "@/game/config";
 
 const ICONS: Record<string, typeof Sword> = {
   sword: Sword,
@@ -657,6 +657,14 @@ function Codex({ back }: { back: () => void }) {
             <li key={l}>{l}</li>
           ))}
         </ol>
+        <h3 className="mt-6 font-display text-lg">Enemigos</h3>
+        <ul className="mt-2 space-y-1 text-sm text-muted">
+          {Object.values(ENEMIES).map((e) => (
+            <li key={e.kind}>
+              <span className="text-ice">{e.name}.</span> {ENEMY_NOTES[e.kind]}
+            </li>
+          ))}
+        </ul>
         <h3 className="mt-6 font-display text-lg">Mejoras</h3>
         <ul className="mt-2 space-y-1 text-sm text-muted">
           {UPGRADES.map((u) => (

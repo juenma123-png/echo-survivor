@@ -46,7 +46,21 @@ export const CONFIG = {
   maxGems: 80,
 };
 
-export type EnemyKind = "slime" | "bat" | "skeleton" | "spider" | "specter" | "elite" | "boss";
+export type EnemyKind =
+  | "slime"
+  | "bat"
+  | "skeleton"
+  | "spider"
+  | "specter"
+  | "brasa"
+  | "luz"
+  | "armadura"
+  | "sanguijuela"
+  | "espora"
+  | "elite"
+  | "boss"
+  | "custodio"
+  | "reina";
 
 export interface EnemyDef {
   kind: EnemyKind;
@@ -58,17 +72,24 @@ export interface EnemyDef {
   r: number;
   draw: number;
   sheet: string;
+  /** Hoja 2×2 opcional que se reproduce al morir. */
+  death?: string;
   ranged?: boolean;
   elite?: boolean;
   boss?: boolean;
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  slime: { kind: "slime", name: "Slime", hp: 20, speed: 58, dmg: 5, xp: 5, r: 13, draw: 38, sheet: "slime" },
-  bat: { kind: "bat", name: "Murciélago", hp: 12, speed: 148, dmg: 4, xp: 4, r: 10, draw: 36, sheet: "bat" },
-  skeleton: { kind: "skeleton", name: "Esqueleto", hp: 70, speed: 42, dmg: 9, xp: 10, r: 15, draw: 48, sheet: "skeleton" },
-  spider: { kind: "spider", name: "Araña", hp: 18, speed: 55, dmg: 6, xp: 8, r: 12, draw: 40, sheet: "spider", ranged: true },
-  specter: { kind: "specter", name: "Espectro", hp: 28, speed: 72, dmg: 7, xp: 9, r: 13, draw: 42, sheet: "specter" },
+  slime: { kind: "slime", name: "Slime", hp: 20, speed: 58, dmg: 5, xp: 5, r: 13, draw: 38, sheet: "slime", death: "slime_death" },
+  bat: { kind: "bat", name: "Murciélago", hp: 12, speed: 148, dmg: 4, xp: 4, r: 10, draw: 36, sheet: "bat", death: "bat_death" },
+  skeleton: { kind: "skeleton", name: "Esqueleto", hp: 70, speed: 42, dmg: 9, xp: 10, r: 15, draw: 48, sheet: "skeleton", death: "skeleton_death" },
+  spider: { kind: "spider", name: "Araña", hp: 18, speed: 55, dmg: 6, xp: 8, r: 12, draw: 40, sheet: "spider", death: "spider_death", ranged: true },
+  specter: { kind: "specter", name: "Espectro", hp: 28, speed: 72, dmg: 7, xp: 9, r: 13, draw: 42, sheet: "specter", death: "specter_death" },
+  brasa: { kind: "brasa", name: "Brasa", hp: 22, speed: 78, dmg: 8, xp: 8, r: 12, draw: 40, sheet: "brasa", death: "brasa_death" },
+  luz: { kind: "luz", name: "Luz errante", hp: 14, speed: 96, dmg: 6, xp: 7, r: 11, draw: 36, sheet: "luz", death: "luz_death" },
+  armadura: { kind: "armadura", name: "Armadura hueca", hp: 120, speed: 36, dmg: 11, xp: 14, r: 16, draw: 52, sheet: "armadura", death: "armadura_death" },
+  sanguijuela: { kind: "sanguijuela", name: "Sanguijuela", hp: 36, speed: 62, dmg: 6, xp: 11, r: 12, draw: 40, sheet: "sanguijuela", death: "sanguijuela_death" },
+  espora: { kind: "espora", name: "Espora", hp: 26, speed: 48, dmg: 5, xp: 9, r: 13, draw: 42, sheet: "espora", death: "espora_death", ranged: true },
   elite: {
     kind: "elite",
     name: "Élite del Vacío",
@@ -79,6 +100,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     r: 22,
     draw: 68,
     sheet: "elite",
+    death: "elite_death",
     elite: true,
   },
   boss: {
@@ -91,8 +113,59 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     r: 46,
     draw: 118,
     sheet: "boss",
+    death: "boss_death",
     boss: true,
   },
+  custodio: {
+    kind: "custodio",
+    name: "Custodio de la Niebla",
+    hp: 780,
+    speed: 38,
+    dmg: 16,
+    xp: 280,
+    r: 32,
+    draw: 96,
+    sheet: "custodio",
+    death: "custodio_death",
+    boss: true,
+  },
+  reina: {
+    kind: "reina",
+    name: "Reina de los Ecos",
+    hp: 2100,
+    speed: 48,
+    dmg: 22,
+    xp: 800,
+    r: 40,
+    draw: 112,
+    sheet: "reina",
+    death: "reina_death",
+    boss: true,
+  },
+};
+
+/** Jefes por tiempo de run (segundos). */
+export const BOSSES: { at: number; kind: EnemyKind; banner: string }[] = [
+  { at: 240, kind: "custodio", banner: "JEFE — Custodio de la Niebla" },
+  { at: BOSS_AT, kind: "boss", banner: "JEFE — Corrupto del Vacío" },
+  { at: 720, kind: "reina", banner: "JEFE — Reina de los Ecos" },
+];
+
+export const ENEMY_NOTES: Record<EnemyKind, string> = {
+  slime: "Persigue en línea recta.",
+  bat: "Muy rápido y frágil.",
+  skeleton: "Lento y duro.",
+  spider: "Dispara a distancia.",
+  specter: "Atraviesa el terreno y deja un Eco.",
+  brasa: "Se lanza y explota al morir.",
+  luz: "Se queda quieta y luego embiste.",
+  armadura: "Tanque. A ratos levanta un escudo.",
+  sanguijuela: "Cura a los enemigos heridos cercanos.",
+  espora: "Dispara esporas que te frenan.",
+  elite: "Cada 45 s. Suelta un Eco.",
+  boss: "Minuto 8. Anillo de disparos bajo la mitad de vida.",
+  custodio: "Minuto 4. Niebla e invoca luces y espectros.",
+  reina: "Minuto 12. Anillos y suelta brasas.",
 };
 
 export type EcoKind = "guerrero" | "arquero" | "sanador" | "fusion";
@@ -202,6 +275,27 @@ export const SPRITE_URLS: Record<string, string> = {
   specter: "/sprites/specter.png",
   elite: "/sprites/elite.png",
   boss: "/sprites/boss.png",
+  boss_death: "/sprites/boss_death.png",
+  custodio: "/sprites/custodio.png",
+  custodio_death: "/sprites/custodio_death.png",
+  reina: "/sprites/reina.png",
+  reina_death: "/sprites/reina_death.png",
+  brasa: "/sprites/brasa.png",
+  brasa_death: "/sprites/brasa_death.png",
+  luz: "/sprites/luz.png",
+  luz_death: "/sprites/luz_death.png",
+  armadura: "/sprites/armadura.png",
+  armadura_death: "/sprites/armadura_death.png",
+  sanguijuela: "/sprites/sanguijuela.png",
+  sanguijuela_death: "/sprites/sanguijuela_death.png",
+  espora: "/sprites/espora.png",
+  espora_death: "/sprites/espora_death.png",
+  slime_death: "/sprites/slime_death.png",
+  bat_death: "/sprites/bat_death.png",
+  skeleton_death: "/sprites/skeleton_death.png",
+  spider_death: "/sprites/spider_death.png",
+  specter_death: "/sprites/specter_death.png",
+  elite_death: "/sprites/elite_death.png",
   eco_guerrero: "/sprites/eco_guerrero.png",
   eco_arquero: "/sprites/eco_arquero.png",
   eco_sanador: "/sprites/eco_sanador.png",
@@ -227,7 +321,7 @@ export const GDD_TEXT = {
     "Apareces en un claro nocturno infinito.",
     "Muévete en 8 direcciones. El ataque es automático.",
     "Recoge fragmentos de XP y elige 1 de 3 mejoras al subir de nivel.",
-    "Oleadas, élites y un jefe a los 8:00.",
+    "Oleadas, élites y jefes a los 4:00, 8:00 y 12:00.",
     "Invoca hasta 3 Ecos. Fusionarlos los borra para siempre.",
     "Si la Cordura llega a 100, Colapso: más daño, menos control.",
     "Sobrevive 15 minutos o cae. Las monedas persisten entre runs.",
