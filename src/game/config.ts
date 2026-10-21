@@ -80,11 +80,11 @@ export interface EnemyDef {
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  slime: { kind: "slime", name: "Slime", hp: 20, speed: 58, dmg: 5, xp: 5, r: 13, draw: 38, sheet: "slime", death: "slime_death" },
-  bat: { kind: "bat", name: "Murciélago", hp: 12, speed: 148, dmg: 4, xp: 4, r: 10, draw: 36, sheet: "bat", death: "bat_death" },
-  skeleton: { kind: "skeleton", name: "Esqueleto", hp: 70, speed: 42, dmg: 9, xp: 10, r: 15, draw: 48, sheet: "skeleton", death: "skeleton_death" },
-  spider: { kind: "spider", name: "Araña", hp: 18, speed: 55, dmg: 6, xp: 8, r: 12, draw: 40, sheet: "spider", death: "spider_death", ranged: true },
-  specter: { kind: "specter", name: "Espectro", hp: 28, speed: 72, dmg: 7, xp: 9, r: 13, draw: 42, sheet: "specter", death: "specter_death" },
+  slime: { kind: "slime", name: "Slime", hp: 20, speed: 58, dmg: 5, xp: 5, r: 13, draw: 38, sheet: "slime" },
+  bat: { kind: "bat", name: "Murciélago", hp: 12, speed: 148, dmg: 4, xp: 4, r: 10, draw: 36, sheet: "bat" },
+  skeleton: { kind: "skeleton", name: "Esqueleto", hp: 70, speed: 42, dmg: 9, xp: 10, r: 15, draw: 48, sheet: "skeleton" },
+  spider: { kind: "spider", name: "Araña", hp: 18, speed: 55, dmg: 6, xp: 8, r: 12, draw: 40, sheet: "spider", ranged: true },
+  specter: { kind: "specter", name: "Espectro", hp: 28, speed: 72, dmg: 7, xp: 9, r: 13, draw: 42, sheet: "specter" },
   brasa: { kind: "brasa", name: "Brasa", hp: 22, speed: 78, dmg: 8, xp: 8, r: 12, draw: 40, sheet: "brasa", death: "brasa_death" },
   luz: { kind: "luz", name: "Luz errante", hp: 14, speed: 96, dmg: 6, xp: 7, r: 11, draw: 36, sheet: "luz", death: "luz_death" },
   armadura: { kind: "armadura", name: "Armadura hueca", hp: 120, speed: 36, dmg: 11, xp: 14, r: 16, draw: 52, sheet: "armadura", death: "armadura_death" },
@@ -100,7 +100,6 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     r: 22,
     draw: 68,
     sheet: "elite",
-    death: "elite_death",
     elite: true,
   },
   boss: {
@@ -113,7 +112,6 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     r: 46,
     draw: 118,
     sheet: "boss",
-    death: "boss_death",
     boss: true,
   },
   custodio: {
@@ -275,7 +273,6 @@ export const SPRITE_URLS: Record<string, string> = {
   specter: "/sprites/specter.png",
   elite: "/sprites/elite.png",
   boss: "/sprites/boss.png",
-  boss_death: "/sprites/boss_death.png",
   custodio: "/sprites/custodio.png",
   custodio_death: "/sprites/custodio_death.png",
   reina: "/sprites/reina.png",
@@ -290,12 +287,6 @@ export const SPRITE_URLS: Record<string, string> = {
   sanguijuela_death: "/sprites/sanguijuela_death.png",
   espora: "/sprites/espora.png",
   espora_death: "/sprites/espora_death.png",
-  slime_death: "/sprites/slime_death.png",
-  bat_death: "/sprites/bat_death.png",
-  skeleton_death: "/sprites/skeleton_death.png",
-  spider_death: "/sprites/spider_death.png",
-  specter_death: "/sprites/specter_death.png",
-  elite_death: "/sprites/elite_death.png",
   eco_guerrero: "/sprites/eco_guerrero.png",
   eco_arquero: "/sprites/eco_arquero.png",
   eco_sanador: "/sprites/eco_sanador.png",
