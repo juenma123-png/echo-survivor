@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import {
   Coins,
+  Compass,
   Ghost,
   Heart,
   Layers,
@@ -22,7 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 import { EchoGame, formatTime, type HudState, type Screen } from "@/game/engine";
-import { ENEMY_NOTES, ENEMIES, GDD_TEXT, META_SHOP, UPGRADES } from "@/game/config";
+import { ENEMY_NOTES, ENEMIES, GDD_TEXT, GEAR, META_SHOP, RUN_MODES, shopPrice, todayEvent, UPGRADES, type RunMode } from "@/game/config";
 
 const ICONS: Record<string, typeof Sword> = {
   sword: Sword,
@@ -66,6 +67,10 @@ const emptyHud = (): HudState => ({
     shake: true,
     music: true,
     sfx: true,
+    owned: [],
+    tool: "",
+    relic: "",
+    mode: "ciclo",
   },
   dashCd: 0,
   dashMax: 1.35,
@@ -203,14 +208,19 @@ export function EchoApp() {
         />
       )}
 
-      {hud.screen === "menu" && (
-        <Menu
+      {(hud.screen === "menu" || hud.screen === "shop" || hud.screen === "gear" || hud.screen === "skills") && (
+        <Hub
           hud={hud}
+          tab={hud.screen}
           go={(s) => g()?.open(s)}
           start={() => {
             enterLandscape();
             g()?.startRun();
           }}
+          buyGear={(id) => g()?.buyGear(id)}
+          equip={(id) => g()?.equipGear(id)}
+          setMode={(mode) => g()?.setMode(mode)}
+          buySkill={(id) => g()?.buyMeta(id)}
         />
       )}
       {hud.screen === "paused" && (
@@ -236,7 +246,16 @@ export function EchoApp() {
       {hud.screen === "dead" && <Death hud={hud} retry={() => g()?.startRun()} menu={() => g()?.toMenu()} />}
       {hud.screen === "win" && <Victory hud={hud} next={() => g()?.toMenu()} />}
       {hud.screen === "meta" && (
-        <MetaShop hud={hud} buy={(id) => g()?.buyMeta(id)} back={() => g()?.open("menu")} />
+        <Hub
+          hud={hud}
+          tab="skills"
+          go={(s) => g()?.open(s)}
+          start={() => g()?.startRun()}
+          buyGear={(id) => g()?.buyGear(id)}
+          equip={(id) => g()?.equipGear(id)}
+          setMode={(mode) => g()?.setMode(mode)}
+          buySkill={(id) => g()?.buyMeta(id)}
+        />
       )}
       {hud.screen === "codex" && <Codex back={() => g()?.open("menu")} />}
       {hud.screen === "settings" && (
@@ -449,33 +468,253 @@ function FullCard({ children }: { children: ReactNode }) {
   );
 }
 
-function Menu({
+type HubTab = "menu" | "shop" | "gear" | "skills";
+
+function Hub({
   hud,
+  tab,
   go,
   start,
+  buyGear,
+  equip,
+  setMode,
+  buySkill,
 }: {
   hud: HudState;
+  tab: HubTab;
   go: (s: Screen) => void;
   start: () => void;
+  buyGear: (id: string) => void;
+  equip: (id: string) => void;
+  setMode: (mode: RunMode) => void;
+  buySkill: (id: string) => void;
+}) {
+  const event = todayEvent();
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col bg-gradient-to-b from-void/55 via-void/80 to-void">
+      <header className="flex items-center justify-between px-4 pt-3 sm:px-6">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan">Echo Survivor</p>
+          <h1 className="font-display text-xl leading-none sm:text-2xl">
+            {tab === "menu" ? "Plaza" : tab === "shop" ? "Comprar" : tab === "gear" ? "Equipo" : "Habilidades"}
+          </h1>
+        </div>
+        <div className="flex items-center gap-2 rounded-full border border-line bg-panel/80 px-3 py-1.5 text-sm">
+          <Coins className="size-4 text-gold" />
+          <span className="font-bold tabular-nums text-gold">{hud.meta.coins}</span>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
+        {tab === "menu" && <Plaza hud={hud} eventName={event.name} eventDesc={event.desc} start={start} setMode={setMode} go={go} />}
+        {tab === "shop" && <Shop hud={hud} buy={buyGear} />}
+        {tab === "gear" && <Gear hud={hud} equip={equip} />}
+        {tab === "skills" && <Skills hud={hud} buy={buySkill} />}
+      </div>
+
+      {hud.message ? <p className="px-4 pb-1 text-center text-xs text-cyan">{hud.message}</p> : null}
+      <Dock tab={tab} go={go} />
+    </div>
+  );
+}
+
+function Plaza({
+  hud,
+  eventName,
+  eventDesc,
+  start,
+  setMode,
+  go,
+}: {
+  hud: HudState;
+  eventName: string;
+  eventDesc: string;
+  start: () => void;
+  setMode: (mode: RunMode) => void;
+  go: (s: Screen) => void;
 }) {
   return (
-    <div className="absolute inset-0 z-30 flex flex-col justify-center overflow-y-auto bg-gradient-to-t from-void via-void/80 to-transparent px-6 py-4 sm:px-16 sm:py-8">
-      <p className="mb-2 text-xs font-bold uppercase tracking-[0.35em] text-cyan">Sobrevive · Mejora · Rompe el ciclo</p>
-      <h1 className="font-display text-4xl font-bold leading-[0.9] sm:text-5xl md:text-7xl">
-        <span className="block text-ice">ECHO</span>
-        <span className="block text-magenta">SURVIVOR</span>
-      </h1>
-      <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">{GDD_TEXT.pitch}</p>
-      <div className="mt-5 flex flex-wrap gap-3">
-        <Primary onClick={start}>Start — Jugar</Primary>
-        <GhostBtn onClick={() => go("meta")}>Fragmentos</GhostBtn>
-        <GhostBtn onClick={() => go("codex")}>Códice</GhostBtn>
-        <GhostBtn onClick={() => go("settings")}>Ajustes</GhostBtn>
+    <div className="grid h-full gap-3 md:grid-cols-[1.15fr_0.85fr]">
+      <div className="flex flex-col gap-3">
+        <article className="rounded-2xl border border-magenta/40 bg-panel/80 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-magenta">Evento de hoy</p>
+          <h2 className="mt-1 font-display text-lg">{eventName}</h2>
+          <p className="mt-1 text-xs leading-relaxed text-muted">{eventDesc}</p>
+        </article>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {RUN_MODES.map((mode) => {
+            const on = hud.meta.mode === mode.id;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setMode(mode.id)}
+                className={`rounded-2xl border p-3 text-left ${on ? "border-cyan bg-cyan/10" : "border-line bg-panel/70 hover:border-cyan/50"}`}
+              >
+                <p className="text-sm font-bold">{mode.name}</p>
+                <p className="mt-1 text-[11px] leading-snug text-muted">{mode.desc}</p>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <p className="mt-4 text-xs text-muted">
-        Mejor run {formatTime(hud.meta.best)} · {hud.meta.coins} fragmentos · {hud.meta.runs} ciclos
-      </p>
+      <div className="flex flex-col justify-between rounded-2xl border border-line bg-panel/75 p-4">
+        <div>
+          <p className="text-xs text-muted">
+            Mejor {formatTime(hud.meta.best)} · {hud.meta.runs} ciclos
+          </p>
+          <p className="mt-2 text-sm text-ice">
+            Entras en <span className="text-cyan">{RUN_MODES.find((m) => m.id === hud.meta.mode)?.name}</span>
+            {hud.meta.tool ? ` con ${GEAR.find((g) => g.id === hud.meta.tool)?.name}` : ""}.
+          </p>
+        </div>
+        <div className="mt-3 flex flex-col gap-2">
+          <Primary onClick={start}>Entrar al ciclo</Primary>
+          <div className="flex gap-2">
+            <GhostBtn onClick={() => go("codex")} className="flex-1">
+              Códice
+            </GhostBtn>
+            <GhostBtn onClick={() => go("settings")} className="flex-1">
+              Ajustes
+            </GhostBtn>
+          </div>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function Shop({ hud, buy }: { hud: HudState; buy: (id: string) => void }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {GEAR.map((item) => {
+        const owned = hud.meta.owned.includes(item.id);
+        const price = shopPrice(item.cost);
+        return (
+          <button
+            key={item.id}
+            type="button"
+            disabled={owned}
+            onClick={() => buy(item.id)}
+            className="rounded-2xl border border-line bg-panel/80 p-3 text-left hover:border-gold disabled:opacity-70"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+              {item.slot === "tool" ? "Herramienta" : "Reliquia"}
+            </p>
+            <h3 className="mt-1 font-semibold">{item.name}</h3>
+            <p className="mt-1 text-xs text-muted">{item.desc}</p>
+            <p className="mt-2 text-xs font-bold text-gold">{owned ? "Ya es tuyo" : `${price} fragmentos`}</p>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Gear({ hud, equip }: { hud: HudState; equip: (id: string) => void }) {
+  const tool = GEAR.find((g) => g.id === hud.meta.tool);
+  const relic = GEAR.find((g) => g.id === hud.meta.relic);
+  const owned = GEAR.filter((g) => hud.meta.owned.includes(g.id));
+  return (
+    <div className="flex h-full flex-col gap-3">
+      <div className="grid grid-cols-2 gap-2">
+        <Slot label="Herramienta" name={tool?.name ?? "Vacío"} desc={tool?.desc ?? "Equipa algo de la tienda."} />
+        <Slot label="Reliquia" name={relic?.name ?? "Vacío"} desc={relic?.desc ?? "Una reliquia a la vez."} />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {owned.length === 0 ? (
+          <p className="text-sm text-muted">Aún no tienes nada. Compra en la tienda y vuelve a equiparlo.</p>
+        ) : (
+          owned.map((item) => {
+            const on = hud.meta.tool === item.id || hud.meta.relic === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => equip(item.id)}
+                className={`rounded-2xl border p-3 text-left ${on ? "border-cyan bg-cyan/10" : "border-line bg-panel/80"}`}
+              >
+                <p className="text-sm font-bold">{item.name}</p>
+                <p className="mt-1 text-[11px] text-muted">{on ? "Equipado · toca para quitar" : "Toca para equipar"}</p>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Slot({ label, name, desc }: { label: string; name: string; desc: string }) {
+  return (
+    <div className="rounded-2xl border border-line bg-panel/80 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</p>
+      <p className="mt-1 font-display text-lg">{name}</p>
+      <p className="mt-1 text-xs text-muted">{desc}</p>
+    </div>
+  );
+}
+
+function Skills({ hud, buy }: { hud: HudState; buy: (id: string) => void }) {
+  const ranks: Record<string, number> = {
+    damage: hud.meta.damage,
+    hp: hud.meta.hp,
+    speed: hud.meta.speed,
+    magnet: hud.meta.magnet,
+  };
+  return (
+    <div className="flex h-full flex-col justify-end gap-3">
+      <p className="text-sm text-muted">Estas mejoras se quedan después de morir. Están al fondo, como el pulso del ciclo.</p>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {META_SHOP.map((it) => (
+          <button
+            key={it.id}
+            type="button"
+            onClick={() => buy(it.id)}
+            className="rounded-2xl border border-line bg-panel/90 p-3 text-left hover:border-gold"
+          >
+            <div className="mb-2 flex gap-1">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <span key={i} className={`h-1.5 flex-1 rounded-full ${(ranks[it.id] ?? 0) > i ? "bg-gold" : "bg-line"}`} />
+              ))}
+            </div>
+            <h3 className="text-sm font-bold">{it.name}</h3>
+            <p className="mt-1 text-[11px] text-muted">{it.desc}</p>
+            <p className="mt-2 text-xs font-bold text-gold">
+              Rango {ranks[it.id] ?? 0} · {shopPrice(it.cost)}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Dock({ tab, go }: { tab: HubTab; go: (s: Screen) => void }) {
+  const items: { id: HubTab; label: string; icon: typeof Compass }[] = [
+    { id: "menu", label: "Plaza", icon: Compass },
+    { id: "shop", label: "Comprar", icon: Coins },
+    { id: "gear", label: "Equipo", icon: Sword },
+    { id: "skills", label: "Habilidades", icon: Sparkles },
+  ];
+  return (
+    <nav className="grid grid-cols-4 gap-1 border-t border-line bg-abyss/95 p-1.5">
+      {items.map((item) => {
+        const on = tab === item.id;
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => go(item.id)}
+            className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-bold ${on ? "bg-cyan/15 text-cyan" : "text-muted"}`}
+          >
+            <Icon className="size-4" />
+            {item.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -605,44 +844,6 @@ function Stats({ hud }: { hud: HudState }) {
       <dt className="text-muted">Fragmentos</dt>
       <dd className="text-right tabular-nums text-gold">+{hud.coins}</dd>
     </dl>
-  );
-}
-
-function MetaShop({ hud, buy, back }: { hud: HudState; buy: (id: string) => void; back: () => void }) {
-  const ranks: Record<string, number> = {
-    damage: hud.meta.damage,
-    hp: hud.meta.hp,
-    speed: hud.meta.speed,
-    magnet: hud.meta.magnet,
-  };
-  return (
-    <FullCard>
-      <Panel wide>
-        <h2 className="font-display text-2xl">Fragmentos</h2>
-        <p className="mt-1 text-sm text-muted">
-          {hud.meta.coins} fragmentos · las mejoras sobreviven a la muerte
-        </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {META_SHOP.map((it) => (
-            <button
-              key={it.id}
-              type="button"
-              onClick={() => buy(it.id)}
-              className="rounded-2xl border border-line bg-panel-2 p-4 text-left hover:border-gold"
-            >
-              <h3 className="font-semibold">{it.name}</h3>
-              <p className="mt-1 text-xs text-muted">{it.desc}</p>
-              <p className="mt-2 text-xs text-gold">
-                Rango {ranks[it.id] ?? 0} · {it.cost} fragmentos
-              </p>
-            </button>
-          ))}
-        </div>
-        <GhostBtn onClick={back} className="mt-5">
-          Volver
-        </GhostBtn>
-      </Panel>
-    </FullCard>
   );
 }
 

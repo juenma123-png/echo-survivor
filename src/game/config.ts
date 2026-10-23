@@ -262,6 +262,63 @@ export const META_SHOP = [
   { id: "magnet", name: "Imán de recuerdos", desc: "+6% imán por rango", cost: 30 },
 ] as const;
 
+export type RunMode = "ciclo" | "soledad" | "niebla";
+
+export const RUN_MODES: { id: RunMode; name: string; desc: string }[] = [
+  { id: "ciclo", name: "Ciclo", desc: "La run de siempre. Ecos, cordura y 15 minutos." },
+  { id: "soledad", name: "Soledad", desc: "Empiezas solo, con el bono de soledad. Los Ecos pesan más." },
+  { id: "niebla", name: "Niebla", desc: "El claro nace cubierto. La experiencia vale un poco más." },
+];
+
+export type GearSlot = "tool" | "relic";
+
+export const GEAR: {
+  id: string;
+  slot: GearSlot;
+  name: string;
+  desc: string;
+  cost: number;
+}[] = [
+  { id: "filo", slot: "tool", name: "Filo de eco", desc: "+18% de daño al empezar la run.", cost: 55 },
+  { id: "arco", slot: "tool", name: "Arco partido", desc: "Un proyectil extra desde el primer disparo.", cost: 80 },
+  { id: "onda", slot: "tool", name: "Onda grave", desc: "+20% de área al empezar.", cost: 70 },
+  { id: "amuleto", slot: "relic", name: "Amuleto de hilo", desc: "+20 de vida máxima.", cost: 45 },
+  { id: "brujula", slot: "relic", name: "Brújula muda", desc: "+8% de velocidad.", cost: 60 },
+  { id: "velo", slot: "relic", name: "Velo quieto", desc: "La cordura de los Ecos sube más despacio.", cost: 75 },
+];
+
+export interface DayEvent {
+  id: "resonancia" | "mercado" | "luna";
+  name: string;
+  desc: string;
+}
+
+/** Evento del día. Cambia con la fecha, no en cada recarga. */
+export function todayEvent(day = new Date().getDate()): DayEvent {
+  const events: DayEvent[] = [
+    {
+      id: "resonancia",
+      name: "Resonancia abierta",
+      desc: "Los fragmentos que ganes en esta run valen un 25% más.",
+    },
+    {
+      id: "mercado",
+      name: "Mercado de ecos",
+      desc: "Comprar y mejorar habilidades cuesta un 20% menos hoy.",
+    },
+    {
+      id: "luna",
+      name: "Luna quieta",
+      desc: "Si entras en Soledad, empiezas con un poco más de daño.",
+    },
+  ];
+  return events[day % events.length]!;
+}
+
+export function shopPrice(cost: number) {
+  return todayEvent().id === "mercado" ? Math.max(1, Math.ceil(cost * 0.8)) : cost;
+}
+
 export const SPRITE_URLS: Record<string, string> = {
   player_idle: "/sprites/player_idle.png",
   player_walk: "/sprites/player_walk.png",

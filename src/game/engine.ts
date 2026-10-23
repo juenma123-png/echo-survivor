@@ -14,6 +14,9 @@ import {
   MAX_ECOS,
   META_SHOP,
   RUN_LENGTH,
+  GEAR,
+  shopPrice,
+  todayEvent,
   SPRITE_URLS,
   TILE,
   UPGRADES,
@@ -24,6 +27,7 @@ import {
   type EcoKind,
   type EnemyDef,
   type EnemyKind,
+  type RunMode,
 } from "./config";
 
 export type Screen =
@@ -36,6 +40,9 @@ export type Screen =
   | "dead"
   | "win"
   | "meta"
+  | "shop"
+  | "gear"
+  | "skills"
   | "codex"
   | "settings";
 
@@ -61,6 +68,10 @@ export interface MetaState {
   shake: boolean;
   music: boolean;
   sfx: boolean;
+  owned: string[];
+  tool: string;
+  relic: string;
+  mode: RunMode;
 }
 export interface HudState {
   screen: Screen;
@@ -125,6 +136,8 @@ interface Player {
   cordura: number;
   hurtT: number;
   slowT: number;
+  /** 1 = normal. El Velo quieto lo baja. */
+  calm: number;
 }
 
 interface Enemy {
@@ -266,6 +279,10 @@ function defaultMeta(): MetaState {
     shake: true,
     music: true,
     sfx: true,
+    owned: [],
+    tool: "",
+    relic: "",
+    mode: "ciclo",
   };
 }
 
@@ -273,7 +290,11 @@ function readMeta(): MetaState {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return defaultMeta();
-    return { ...defaultMeta(), ...(JSON.parse(raw) as MetaState) };
+    const parsed = JSON.parse(raw) as Partial<MetaState>;
+    const meta = { ...defaultMeta(), ...parsed };
+    if (!Array.isArray(meta.owned)) meta.owned = [];
+    if (meta.mode !== "ciclo" && meta.mode !== "soledad" && meta.mode !== "niebla") meta.mode = "ciclo";
+    return meta;
   } catch {
     return defaultMeta();
   }
@@ -448,6 +469,7 @@ export class EchoGame {
   seenBoss = new Set<EnemyKind>();
   eventText = "";
   fogT = 0;
+  fogMode = false;
   hint = "";
   message = "";
   msgT = 0;
@@ -710,19 +732,73 @@ export class EchoGame {
   buyMeta(id: string) {
     const item = META_SHOP.find((x) => x.id === id);
     if (!item) return;
-    if (this.meta.coins < item.cost) {
+    const cost = shopPrice(item.cost);
+    if (this.meta.coins < cost) {
       this.flash("No tienes suficientes fragmentos.");
       this.emit();
       return;
     }
-    this.meta.coins -= item.cost;
+    this.meta.coins -= cost;
     if (id === "damage") this.meta.damage += 1;
     if (id === "hp") this.meta.hp += 1;
     if (id === "speed") this.meta.speed += 1;
     if (id === "magnet") this.meta.magnet += 1;
     writeMeta(this.meta);
-    this.flash("Mejora permanente grabada.");
+    this.flash("Habilidad grabada.");
     this.emit();
+  }
+
+  buyGear(id: string) {
+    const item = GEAR.find((x) => x.id === id);
+    if (!item || this.meta.owned.includes(id)) return;
+    const cost = shopPrice(item.cost);
+    if (this.meta.coins < cost) {
+      this.flash("No tienes suficientes fragmentos.");
+      this.emit();
+      return;
+    }
+    this.meta.coins -= cost;
+    this.meta.owned.push(id);
+    if (item.slot === "tool" && !this.meta.tool) this.meta.tool = id;
+    if (item.slot === "relic" && !this.meta.relic) this.meta.relic = id;
+    writeMeta(this.meta);
+    this.flash(`Compraste ${item.name}.`);
+    this.emit();
+  }
+
+  equipGear(id: string) {
+    const item = GEAR.find((x) => x.id === id);
+    if (!item || !this.meta.owned.includes(id)) return;
+    if (item.slot === "tool") this.meta.tool = this.meta.tool === id ? "" : id;
+    else this.meta.relic = this.meta.relic === id ? "" : id;
+    writeMeta(this.meta);
+    this.emit();
+  }
+
+  setMode(mode: RunMode) {
+    this.meta.mode = mode;
+    writeMeta(this.meta);
+    this.emit();
+  }
+
+  private applyLoadout() {
+    const p = this.player;
+    const m = this.meta;
+    if (m.tool === "filo") p.dmg *= 1.18;
+    if (m.tool === "arco") p.projectiles += 1;
+    if (m.tool === "onda") p.area *= 1.2;
+    if (m.relic === "amuleto") {
+      p.maxHp += 20;
+      p.hp += 20;
+    }
+    if (m.relic === "brujula") p.speed *= 1.08;
+    if (m.relic === "velo") p.calm = 0.72;
+    if (m.mode === "soledad") {
+      p.solitude = true;
+      if (todayEvent().id === "luna") p.dmg *= 1.08;
+    }
+    this.fogMode = m.mode === "niebla";
+    if (this.fogMode) this.fogT = 16;
   }
 
   setSetting(k: "shake" | "music" | "sfx", v: boolean) {
@@ -770,6 +846,7 @@ export class EchoGame {
       cordura: 0,
       hurtT: 0,
       slowT: 0,
+      calm: 1,
     };
     this.enemies = [];
     this.projs = [];
@@ -788,6 +865,8 @@ export class EchoGame {
     this.seenBoss.clear();
     this.eventText = "";
     this.fogT = 0;
+    this.fogMode = false;
+    this.applyLoadout();
     this.resonT = 0;
     this.corpses = [];
     this.driftT = 0;
@@ -987,7 +1066,8 @@ export class EchoGame {
         this.flash("EVENTO — Resonancia hostil (+vida enemiga)");
       }
     }
-    if (this.fogT > 0) this.fogT -= dt;
+    if (this.fogMode) this.fogT = Math.max(8, this.fogT - dt * 0.15);
+    else if (this.fogT > 0) this.fogT -= dt;
     /* La Resonancia dura un tiempo limitado; antes se quedaba activa para siempre. */
     if (this.resonT > 0) this.resonT -= dt;
 
@@ -1580,7 +1660,8 @@ export class EchoGame {
 
   private addXp(v: number) {
     const p = this.player;
-    p.xp += v;
+    const bonus = this.fogMode ? 1.12 : 1;
+    p.xp += v * bonus;
     while (p.xp >= p.nextXp) {
       p.xp -= p.nextXp;
       p.level += 1;
@@ -1792,7 +1873,7 @@ export class EchoGame {
       ec.x += (tx - ec.x) * Math.min(1, dt * 6);
       ec.y += (ty - ec.y) * Math.min(1, dt * 6);
       const cost = ec.def.cordura * (1 - Math.min(0.75, p.bond)) * (dt / 6.5);
-      p.cordura = clamp(p.cordura + cost, 0, CORDURA_MAX);
+      p.cordura = clamp(p.cordura + cost * p.calm, 0, CORDURA_MAX);
       ec.cd -= dt;
       if (ec.hostile) {
         const ang = Math.atan2(p.y - ec.y, p.x - ec.x);
@@ -1910,7 +1991,8 @@ export class EchoGame {
   }
 
   private endRun(win: boolean) {
-    const gained = Math.floor(this.time / 8) + this.coins;
+    let gained = Math.floor(this.time / 8) + this.coins;
+    if (todayEvent().id === "resonancia") gained = Math.floor(gained * 1.25);
     this.meta.coins += gained;
     this.meta.best = Math.max(this.meta.best, this.time);
     writeMeta(this.meta);
