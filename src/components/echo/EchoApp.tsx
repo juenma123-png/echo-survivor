@@ -23,6 +23,8 @@ import {
   Zap,
 } from "lucide-react";
 import { EchoGame, formatTime, type HudState, type Screen } from "@/game/engine";
+import type { GearSlotId } from "@/game/gear";
+import { EquipPanel } from "@/components/echo/EquipPanel";
 import { ENEMY_NOTES, ENEMIES, GDD_TEXT, GEAR, META_SHOP, RUN_MODES, shopPrice, todayEvent, UPGRADES, type RunMode } from "@/game/config";
 
 const ICONS: Record<string, typeof Sword> = {
@@ -71,6 +73,8 @@ const emptyHud = (): HudState => ({
     tool: "",
     relic: "",
     mode: "ciclo",
+    inventory: [],
+    equipped: { arma: "", casco: "", armadura: "", botas: "", reliquia: "" },
   },
   dashCd: 0,
   dashMax: 1.35,
@@ -221,6 +225,9 @@ export function EchoApp() {
           equip={(id) => g()?.equipGear(id)}
           setMode={(mode) => g()?.setMode(mode)}
           buySkill={(id) => g()?.buyMeta(id)}
+          onEquipItem={(uid) => g()?.equipItem(uid)}
+          onUnequipSlot={(slot) => g()?.unequipSlot(slot)}
+          onDissolveItem={(uid) => g()?.dissolveItem(uid)}
         />
       )}
       {hud.screen === "paused" && (
@@ -255,9 +262,12 @@ export function EchoApp() {
           equip={(id) => g()?.equipGear(id)}
           setMode={(mode) => g()?.setMode(mode)}
           buySkill={(id) => g()?.buyMeta(id)}
+          onEquipItem={(uid) => g()?.equipItem(uid)}
+          onUnequipSlot={(slot) => g()?.unequipSlot(slot)}
+          onDissolveItem={(uid) => g()?.dissolveItem(uid)}
         />
       )}
-      {hud.screen === "codex" && <Codex back={() => g()?.open("menu")} />}
+      {hud.screen === "codex" &&<Codex back={() => g()?.open("menu")} />}
       {hud.screen === "settings" && (
         <SettingsScreen
           hud={hud}
@@ -479,6 +489,9 @@ function Hub({
   equip,
   setMode,
   buySkill,
+  onEquipItem,
+  onUnequipSlot,
+  onDissolveItem,
 }: {
   hud: HudState;
   tab: HubTab;
@@ -488,6 +501,9 @@ function Hub({
   equip: (id: string) => void;
   setMode: (mode: RunMode) => void;
   buySkill: (id: string) => void;
+  onEquipItem: (uid: string) => void;
+  onUnequipSlot: (slot: GearSlotId) => void;
+  onDissolveItem: (uid: string) => void;
 }) {
   const event = todayEvent();
   return (
@@ -508,7 +524,13 @@ function Hub({
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
         {tab === "menu" && <Plaza hud={hud} eventName={event.name} eventDesc={event.desc} start={start} setMode={setMode} go={go} />}
         {tab === "shop" && <Shop hud={hud} buy={buyGear} />}
-        {tab === "gear" && <Gear hud={hud} equip={equip} />}
+        {tab === "gear" && (
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+            <EquipPanel hud={hud} onEquip={onEquipItem} onUnequip={onUnequipSlot} onDissolve={onDissolveItem} />
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">Piezas de la tienda</p>
+            <Gear hud={hud} equip={equip} />
+          </div>
+        )}
         {tab === "skills" && <Skills hud={hud} buy={buySkill} />}
       </div>
 

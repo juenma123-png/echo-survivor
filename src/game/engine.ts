@@ -29,6 +29,18 @@ import {
   type EnemyKind,
   type RunMode,
 } from "./config";
+import {
+  dissolveValue,
+  emptyTotals,
+  rollDrop,
+  totalsOf,
+  type GearItem,
+  type GearSlotId,
+  type GearTotals,
+} from "./gear";
+
+/** Límite de objetos guardados. Al llenarse, lo nuevo se desmonta en fragmentos. */
+const INVENTORY_CAP = 80;
 
 export type Screen =
   | "boot"
@@ -72,6 +84,14 @@ export interface MetaState {
   tool: string;
   relic: string;
   mode: RunMode;
+  /** Equipo obtenido en cofres, élites y jefes (incluye lo equipado). */
+  inventory: GearItem[];
+  /** uid del objeto equipado en cada ranura ("" = vacía). */
+  equipped: Record<GearSlotId, string>;
+}
+
+function emptyEquipped(): Record<GearSlotId, string> {
+  return { arma: "", casco: "", armadura: "", botas: "", reliquia: "" };
 }
 export interface HudState {
   screen: Screen;
@@ -283,6 +303,8 @@ function defaultMeta(): MetaState {
     tool: "",
     relic: "",
     mode: "ciclo",
+    inventory: [],
+    equipped: emptyEquipped(),
   };
 }
 
@@ -293,6 +315,13 @@ function readMeta(): MetaState {
     const parsed = JSON.parse(raw) as Partial<MetaState>;
     const meta = { ...defaultMeta(), ...parsed };
     if (!Array.isArray(meta.owned)) meta.owned = [];
+    if (!Array.isArray(meta.inventory)) meta.inventory = [];
+    // Solo conservamos objetos con forma válida; el equipo guardado a mano se limpia si no existe.
+    meta.inventory = meta.inventory.filter((it) => it && typeof it.uid === "string" && Array.isArray(it.affixes));
+    meta.equipped = { ...emptyEquipped(), ...(meta.equipped ?? {}) };
+    for (const slot of Object.keys(meta.equipped) as GearSlotId[]) {
+      if (!meta.inventory.some((it) => it.uid === meta.equipped[slot] && it.slot === slot)) meta.equipped[slot] = "";
+    }
     if (meta.mode !== "ciclo" && meta.mode !== "soledad" && meta.mode !== "niebla") meta.mode = "ciclo";
     return meta;
   } catch {
@@ -775,15 +804,99 @@ export class EchoGame {
     this.emit();
   }
 
+  /** Equipa un objeto del inventario en su ranura (reemplaza lo que hubiera). */
+  equipItem(uid: string) {
+    const item = this.meta.inventory.find((it) => it.uid === uid);
+    if (!item) return;
+    this.meta.equipped[item.slot] = uid;
+    writeMeta(this.meta);
+    this.flash(`Equipado: ${item.base}`);
+    this.emit();
+  }
+
+  /** Quita lo equipado en una ranura. El objeto sigue en el inventario. */
+  unequipSlot(slot: GearSlotId) {
+    this.meta.equipped[slot] = "";
+    writeMeta(this.meta);
+    this.emit();
+  }
+
+  /** Desmonta un objeto no equipado y te da fragmentos según su calidad. */
+  dissolveItem(uid: string) {
+    const idx = this.meta.inventory.findIndex((it) => it.uid === uid);
+    if (idx < 0) return;
+    const item = this.meta.inventory[idx]!;
+    if (Object.values(this.meta.equipped).includes(uid)) {
+      this.flash("Quita el objeto de la ranura antes de desmontarlo.");
+      this.emit();
+      return;
+    }
+    this.meta.inventory.splice(idx, 1);
+    const gained = dissolveValue(item);
+    this.meta.coins += gained;
+    writeMeta(this.meta);
+    this.flash(`Desmontado: +${gained} fragmentos.`);
+    this.emit();
+  }
+
+  /**
+   * Guarda un objeto obtenido en la run. Si el inventario está lleno se desmonta solo.
+   * Devuelve el objeto para poder mostrarlo en pantalla.
+   */
+  private grantGear(item: GearItem) {
+    if (this.meta.inventory.length >= INVENTORY_CAP) {
+      const gained = dissolveValue(item);
+      this.meta.coins += gained;
+      this.flash(`Inventario lleno: ${item.base} se desmonta (+${gained}).`);
+    } else {
+      this.meta.inventory.push(item);
+      this.flash(`Obtienes ${item.base} (${item.rarity}) · nivel ${item.level}`);
+    }
+    writeMeta(this.meta);
+    this.audio.level();
+    this.hudDirty = true;
+  }
+
+  /** Nivel del equipo que cae en esta run: sube cada 3 minutos. */
+  private gearLevel() {
+    return 1 + Math.floor(this.time / 180);
+  }
+
   setMode(mode: RunMode) {
     this.meta.mode = mode;
     writeMeta(this.meta);
     this.emit();
   }
 
+  /** Efectos del equipo actual (suma de todas las ranuras equipadas). */
+  gearTotals(): GearTotals {
+    const worn = (Object.values(this.meta.equipped) as string[])
+      .map((uid) => this.meta.inventory.find((it) => it.uid === uid))
+      .filter((it): it is GearItem => !!it);
+    return worn.length ? totalsOf(worn) : emptyTotals();
+  }
+
   private applyLoadout() {
     const p = this.player;
     const m = this.meta;
+    const t = this.gearTotals();
+    // Equipo por calidad: se aplica al empezar la run (no cambia a mitad de partida).
+    p.dmg *= 1 + t.dmg;
+    p.speed *= 1 + t.speed;
+    p.area *= 1 + t.area;
+    p.fireRate *= 1 + t.fireRate;
+    p.magnet *= 1 + t.magnet;
+    p.crit = Math.min(0.6, p.crit + t.crit);
+    p.regen += t.regen;
+    p.armor = Math.min(0.5, p.armor + t.armor);
+    p.projectiles += Math.round(t.proj);
+    if (t.hp > 0) {
+      const inc = p.maxHp * t.hp;
+      p.maxHp += inc;
+      p.hp += inc;
+    }
+    // La reducción de cordura de Ecos se multiplica y no baja de la mitad.
+    p.calm = Math.max(0.5, p.calm * (1 - Math.min(0.5, t.calm)));
     if (m.tool === "filo") p.dmg *= 1.18;
     if (m.tool === "arco") p.projectiles += 1;
     if (m.tool === "onda") p.area *= 1.2;
@@ -792,7 +905,7 @@ export class EchoGame {
       p.hp += 20;
     }
     if (m.relic === "brujula") p.speed *= 1.08;
-    if (m.relic === "velo") p.calm = 0.72;
+    if (m.relic === "velo") p.calm *= 0.72;
     if (m.mode === "soledad") {
       p.solitude = true;
       if (todayEvent().id === "luna") p.dmg *= 1.08;
@@ -1620,6 +1733,10 @@ export class EchoGame {
       this.flash(
         e.def.boss ? `${e.def.name} cae. Un altar y un Eco despiertan.` : "Un Eco yace en el suelo. Acércate.",
       );
+      // Botín de equipo: el jefe siempre suelta uno; los élites, la mitad de las veces.
+      // Se llama después del mensaje de Eco para que el aviso de equipo quede visible.
+      if (e.def.boss) this.grantGear(rollDrop("boss", this.time / 60, this.gearLevel()));
+      else if (Math.random() < 0.5) this.grantGear(rollDrop("elite", this.time / 60, this.gearLevel()));
     } else if (e.def.kind === "specter") {
       const id = pick(ECO_POOL);
       this.pickups.push({ kind: "echoOrb", x: e.x, y: e.y, used: false, ecoId: id, manual: true });
@@ -1841,6 +1958,8 @@ export class EchoGame {
       this.flash("Cofre — fragmentos y un respiro.");
       this.audio.pickup();
       this.hudDirty = true;
+      // Cada cofre suelta un objeto de equipo; el aviso se muestra después del de fragmentos.
+      this.grantGear(rollDrop("chest", this.time / 60, this.gearLevel()));
       return;
     }
     if (k.kind === "altar") {

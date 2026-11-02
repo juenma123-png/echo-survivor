@@ -28,6 +28,21 @@ Los disparos enemigos no atraviesan árboles, pilares, rocas ni cristales. Los e
 
 Abajo hay cuatro sitios: Plaza (evento del día y modalidad), Comprar, Equipo y Habilidades. Lo que compres se guarda en este navegador y entra en la siguiente run.
 
+## Equipo
+
+Los cofres, los élites (la mitad de las veces) y los jefes sueltan equipo. Cada objeto tiene una ranura (arma, casco, armadura, botas o reliquia), una calidad y efectos:
+
+| Calidad | Efectos | Valores |
+|---|---|---|
+| Común | 1 | base |
+| Raro | 2 | ×1.4 |
+| Épico | 3 | ×1.9 |
+| Legendario | 4 | ×2.6 |
+
+El nivel del objeto sube cada 3 minutos de run. Los efectos equipados se aplican al empezar la siguiente run. Desmontar un objeto no equipado da fragmentos según su calidad. Los objetos de la tienda siguen en la misma pestaña, debajo del inventario.
+
+Los valores y pesos de caída están en `src/game/gear.ts`.
+
 ## Enemigos nuevos
 
 Brasa (explota), Luz errante (embiste), Armadura hueca (escudo), Sanguijuela (cura aliados), Espora (frena). Jefes a los 4:00 (Custodio de la Niebla), 8:00 (Corrupto) y 12:00 (Reina de los Ecos). Al morir, si hay hoja `*_death`, se reproducen sus cuatro cuadros.
