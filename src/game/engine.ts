@@ -2280,25 +2280,56 @@ export class EchoGame {
     ctx.scale(pr.s, pr.s);
     ctx.lineWidth = 3;
     ctx.lineJoin = "round";
+
     if (pr.kind === "rock") {
-      ctx.fillStyle = "#586174"; ctx.strokeStyle = "#aab4c7";
-      ctx.beginPath(); ctx.moveTo(-28, -5); ctx.lineTo(-22, -30); ctx.lineTo(-4, -43);
-      ctx.lineTo(22, -28); ctx.lineTo(30, -5); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#586174";
+      ctx.strokeStyle = "#aab4c7";
+      ctx.beginPath();
+      ctx.moveTo(-28, -5);
+      ctx.lineTo(-22, -30);
+      ctx.lineTo(-4, -43);
+      ctx.lineTo(22, -28);
+      ctx.lineTo(30, -5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     } else if (pr.kind === "crystal") {
-      ctx.fillStyle = "#45cde8"; ctx.strokeStyle = "#b7f6ff";
-      ctx.beginPath(); ctx.moveTo(0, -52); ctx.lineTo(22, -23); ctx.lineTo(12, -3);
-      ctx.lineTo(-14, -3); ctx.lineTo(-23, -25); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = "#d7fbff"; ctx.beginPath(); ctx.moveTo(0, -48); ctx.lineTo(2, -7); ctx.stroke();
+      ctx.fillStyle = "#45cde8";
+      ctx.strokeStyle = "#b7f6ff";
+      ctx.beginPath();
+      ctx.moveTo(0, -52);
+      ctx.lineTo(22, -23);
+      ctx.lineTo(12, -3);
+      ctx.lineTo(-14, -3);
+      ctx.lineTo(-23, -25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#d7fbff";
+      ctx.beginPath();
+      ctx.moveTo(0, -48);
+      ctx.lineTo(2, -7);
+      ctx.stroke();
     } else if (pr.kind === "tree") {
-      ctx.fillStyle = "#76533d"; ctx.fillRect(-6, -28, 12, 28);
-      ctx.fillStyle = "#245c4b"; ctx.strokeStyle = "#6abf91";
-      ctx.beginPath(); ctx.arc(0, -37, 25, 0, TAU); ctx.arc(-16, -25, 17, 0, TAU);
-      ctx.arc(16, -25, 17, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#76533d";
+      ctx.fillRect(-6, -28, 12, 28);
+      ctx.fillStyle = "#245c4b";
+      ctx.strokeStyle = "#6abf91";
+      ctx.beginPath();
+      ctx.arc(0, -37, 25, 0, TAU);
+      ctx.arc(-16, -25, 17, 0, TAU);
+      ctx.arc(16, -25, 17, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
     } else {
-      ctx.fillStyle = "#626b83"; ctx.strokeStyle = "#c1c9d8";
-      ctx.fillRect(-15, -58, 30, 55); ctx.strokeRect(-15, -58, 30, 55);
-      ctx.fillRect(-22, -64, 44, 9); ctx.fillRect(-22, -5, 44, 8);
+      ctx.fillStyle = "#626b83";
+      ctx.strokeStyle = "#c1c9d8";
+      ctx.fillRect(-15, -58, 30, 55);
+      ctx.strokeRect(-15, -58, 30, 55);
+      ctx.fillRect(-22, -64, 44, 9);
+      ctx.fillRect(-22, -5, 44, 8);
     }
+
     ctx.restore();
   }
 
