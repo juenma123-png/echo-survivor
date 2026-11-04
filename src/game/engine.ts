@@ -677,15 +677,14 @@ export class EchoGame {
   }
 
   private wireControlsTest() {
-    const self = this;
     (window as unknown as { __controlsTest: unknown }).__controlsTest = {
-      getYaw: () => self.player?.facing ?? 0,
-      getSpeed: () => Math.hypot(self.player?.vx ?? 0, self.player?.vy ?? 0),
+      getYaw: () => this.player?.facing ?? 0,
+      getSpeed: () => Math.hypot(this.player?.vx ?? 0, this.player?.vy ?? 0),
       setKeys: (codes: string[]) => {
-        self.input.injected = codes;
+        this.input.injected = codes;
       },
       setSteer: (v: number) => {
-        self.input.stickX = -v;
+        this.input.stickX = -v;
       },
     };
   }
@@ -1182,7 +1181,7 @@ export class EchoGame {
         let dx = x - c.x;
         let dy = y - c.y;
         const min = r + c.r;
-        let d2 = dx * dx + dy * dy;
+        const d2 = dx * dx + dy * dy;
         if (d2 >= min * min) continue;
         let d = Math.sqrt(d2);
         if (d < 0.001) {
