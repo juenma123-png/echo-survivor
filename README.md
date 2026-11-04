@@ -26,7 +26,7 @@ Los disparos enemigos no atraviesan árboles, pilares, rocas ni cristales. Los e
 
 ## Plaza
 
-Abajo hay cuatro sitios: Plaza (evento del día y modalidad), Comprar, Equipo y Habilidades. Lo que compres se guarda en este navegador y entra en la siguiente run.
+Abajo hay cuatro sitios. La Plaza elige el nivel (15 minutos; cada uno sube un 25 % la vida y el daño). Comprar abre cofres de calidad. Equipo muestra las piezas con su dibujo: el marco cambia con la calidad (común, raro, épico, legendario).
 
 ## Equipo
 

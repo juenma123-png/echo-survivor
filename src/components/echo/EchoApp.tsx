@@ -23,7 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 import { EchoGame, formatTime, type HudState, type Screen } from "@/game/engine";
-import { rarityColor, rarityName, type GearSlotId } from "@/game/gear";
+import { rarityColor, rarityName, gearIcon, type GearSlotId } from "@/game/gear";
 import { EquipPanel } from "@/components/echo/EquipPanel";
 import { ENEMY_NOTES, ENEMIES, GDD_TEXT, GEAR, META_SHOP, RUN_MODES, shopPrice, todayEvent, UPGRADES, type RunMode } from "@/game/config";
 
@@ -532,11 +532,7 @@ function Hub({
         {tab === "menu" && <Plaza hud={hud} eventName={event.name} eventDesc={event.desc} start={start} setMode={setMode} setLevel={onSetLevel} go={go} />}
         {tab === "shop" && <Shop hud={hud} buy={buyGear} />}
         {tab === "gear" && (
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-            <EquipPanel hud={hud} onEquip={onEquipItem} onUnequip={onUnequipSlot} onDissolve={onDissolveItem} />
-            <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-muted">Piezas de la tienda</p>
-            <Gear hud={hud} equip={equip} />
-          </div>
+          <EquipPanel hud={hud} onEquip={onEquipItem} onUnequip={onUnequipSlot} onDissolve={onDissolveItem} />
         )}
         {tab === "skills" && <Skills hud={hud} buy={buySkill} />}
       </div>
@@ -569,35 +565,37 @@ function Plaza({
   return (
     <div className="grid h-full gap-3 md:grid-cols-[1.15fr_0.85fr]">
       <div className="flex flex-col gap-3">
-        <article className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan/40 bg-panel/80 p-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan">Nivel</p>
-            <h2 className="font-display text-2xl">Nivel {sel}</h2>
-            <p className="text-[11px] text-muted">
-              Enemigos +{Math.round((sel - 1) * 25)}% de vida y daño · {unlocked} desbloqueado{unlocked > 1 ? "s" : ""}
-              {sel % 5 === 0 ? " · cofre especial al superarlo" : ""}
-            </p>
+        <article className="rounded-2xl border border-cyan/40 bg-panel/80 p-3">
+          <div className="mb-2 flex items-end justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan">Nivel {sel}</p>
+              <h2 className="font-display text-xl">Sobrevive 15:00</h2>
+            </div>
+            <p className="text-[11px] text-muted">Enemigos +{Math.round((sel - 1) * 25)}%</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={sel <= 1}
-              onClick={() => setLevel(sel - 1)}
-              className="size-10 rounded-full border border-line text-lg font-bold disabled:opacity-30"
-              aria-label="Nivel anterior"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              disabled={sel >= unlocked}
-              onClick={() => setLevel(sel + 1)}
-              className="size-10 rounded-full border border-line text-lg font-bold disabled:opacity-30"
-              aria-label="Nivel siguiente"
-            >
-              ›
-            </button>
+          <div className="flex items-center gap-1 overflow-x-auto pb-1">
+            {Array.from({ length: Math.max(unlocked, sel) }, (_, i) => i + 1).slice(Math.max(0, sel - 4), sel + 3).map((n, idx, arr) => {
+              const locked = n > unlocked;
+              const on = n === sel;
+              return (
+                <div key={n} className="flex items-center">
+                  <button
+                    type="button"
+                    disabled={locked}
+                    onClick={() => setLevel(n)}
+                    className={`flex h-14 w-16 flex-col items-center justify-center rounded-xl border text-[11px] font-bold ${on ? "border-gold bg-gold/15 text-gold" : locked ? "border-line text-muted opacity-40" : "border-cyan/40 text-cyan"}`}
+                  >
+                    <span>{locked ? "—" : n % 5 === 0 ? "Cofre" : "Nv."}</span>
+                    <span>{n}</span>
+                  </button>
+                  {idx < arr.length - 1 ? <span className="mx-0.5 h-0.5 w-3 bg-line" /> : null}
+                </div>
+              );
+            })}
           </div>
+          <p className="mt-1 text-[11px] text-muted">
+            {sel % 5 === 0 ? "Al pasarlo: cofre especial, sin objetos comunes." : "Al pasarlo: un objeto común y se abre el siguiente."}
+          </p>
         </article>
         <article className="rounded-2xl border border-magenta/40 bg-panel/80 p-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-magenta">Evento de hoy</p>
@@ -632,7 +630,7 @@ function Plaza({
           </p>
         </div>
         <div className="mt-3 flex flex-col gap-2">
-          <Primary onClick={start}>Entrar al ciclo</Primary>
+          <Primary onClick={start}>Continuar · nivel {sel}</Primary>
           <div className="flex gap-2">
             <GhostBtn onClick={() => go("codex")} className="flex-1">
               Códice
@@ -648,72 +646,27 @@ function Plaza({
 }
 
 function Shop({ hud, buy }: { hud: HudState; buy: (id: string) => void }) {
+  const chests = [
+    { id: "comun", name: "Cofre común", desc: "Una pieza común. Un efecto.", cost: 40 },
+    { id: "raro", name: "Cofre raro", desc: "Dos efectos, valores más altos.", cost: 95 },
+    { id: "epico", name: "Cofre épico", desc: "Tres efectos. A veces mejor.", cost: 180 },
+  ];
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {GEAR.map((item) => {
-        const owned = hud.meta.owned.includes(item.id);
-        const price = shopPrice(item.cost);
-        return (
-          <button
-            key={item.id}
-            type="button"
-            disabled={owned}
-            onClick={() => buy(item.id)}
-            className="rounded-2xl border border-line bg-panel/80 p-3 text-left hover:border-gold disabled:opacity-70"
-          >
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
-              {item.slot === "tool" ? "Herramienta" : "Reliquia"}
-            </p>
-            <h3 className="mt-1 font-semibold">{item.name}</h3>
-            <p className="mt-1 text-xs text-muted">{item.desc}</p>
-            <p className="mt-2 text-xs font-bold text-gold">{owned ? "Ya es tuyo" : `${price} fragmentos`}</p>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Gear({ hud, equip }: { hud: HudState; equip: (id: string) => void }) {
-  const tool = GEAR.find((g) => g.id === hud.meta.tool);
-  const relic = GEAR.find((g) => g.id === hud.meta.relic);
-  const owned = GEAR.filter((g) => hud.meta.owned.includes(g.id));
-  return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="grid grid-cols-2 gap-2">
-        <Slot label="Herramienta" name={tool?.name ?? "Vacío"} desc={tool?.desc ?? "Equipa algo de la tienda."} />
-        <Slot label="Reliquia" name={relic?.name ?? "Vacío"} desc={relic?.desc ?? "Una reliquia a la vez."} />
-      </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {owned.length === 0 ? (
-          <p className="text-sm text-muted">Aún no tienes nada. Compra en la tienda y vuelve a equiparlo.</p>
-        ) : (
-          owned.map((item) => {
-            const on = hud.meta.tool === item.id || hud.meta.relic === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => equip(item.id)}
-                className={`rounded-2xl border p-3 text-left ${on ? "border-cyan bg-cyan/10" : "border-line bg-panel/80"}`}
-              >
-                <p className="text-sm font-bold">{item.name}</p>
-                <p className="mt-1 text-[11px] text-muted">{on ? "Equipado · toca para quitar" : "Toca para equipar"}</p>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Slot({ label, name, desc }: { label: string; name: string; desc: string }) {
-  return (
-    <div className="rounded-2xl border border-line bg-panel/80 p-3">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-muted">{label}</p>
-      <p className="mt-1 font-display text-lg">{name}</p>
-      <p className="mt-1 text-xs text-muted">{desc}</p>
+    <div className="grid h-full gap-3 md:grid-cols-3">
+      {chests.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => buy(c.id)}
+          className="flex flex-col items-start rounded-2xl border border-gold/40 bg-panel/85 p-4 text-left hover:border-gold"
+        >
+          <img src="/sprites/prop_chest.png" alt="" className="mb-2 size-16 object-contain" style={{ imageRendering: "pixelated" }} />
+          <h3 className="font-display text-lg">{c.name}</h3>
+          <p className="mt-1 text-xs text-muted">{c.desc}</p>
+          <p className="mt-3 text-sm font-bold text-gold">{shopPrice(c.cost)} fragmentos</p>
+          <span className="mt-3 text-[11px] text-muted">Tienes {hud.meta.coins}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -893,11 +846,12 @@ function Victory({ hud, next }: { hud: HudState; next: () => void }) {
             </p>
             <ul className="mt-2 flex flex-col gap-1.5">
               {r.items.map((it) => (
-                <li key={it.uid} className="flex items-baseline justify-between gap-2 text-sm">
+                <li key={it.uid} className="flex items-center gap-2 text-sm">
+                  <img src={gearIcon(it.base)} alt="" className="size-8 object-contain" style={{ imageRendering: "pixelated" }} />
                   <span className="font-bold" style={{ color: rarityColor(it.rarity) }}>
                     {it.base}
                   </span>
-                  <span className="text-xs text-muted">
+                  <span className="ml-auto text-xs text-muted">
                     {rarityName(it.rarity)} · Nv. {it.level}
                   </span>
                 </li>

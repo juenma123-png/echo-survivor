@@ -34,8 +34,10 @@ import {
   dissolveValue,
   emptyTotals,
   rollDrop,
+  rollGear,
   rollLevelReward,
   totalsOf,
+  GEAR_SLOTS,
   type GearItem,
   type GearSlotId,
   type GearTotals,
@@ -804,6 +806,10 @@ export class EchoGame {
   }
 
   buyGear(id: string) {
+    if (id === "comun" || id === "raro" || id === "epico") {
+      this.buyChest(id);
+      return;
+    }
     const item = GEAR.find((x) => x.id === id);
     if (!item || this.meta.owned.includes(id)) return;
     const cost = shopPrice(item.cost);
@@ -818,6 +824,20 @@ export class EchoGame {
     if (item.slot === "relic" && !this.meta.relic) this.meta.relic = id;
     writeMeta(this.meta);
     this.flash(`Compraste ${item.name}.`);
+    this.emit();
+  }
+
+  /** Cofre de la tienda: un objeto de esa calidad, ranura al azar. */
+  buyChest(rarity: "comun" | "raro" | "epico") {
+    const cost = shopPrice(rarity === "comun" ? 40 : rarity === "raro" ? 95 : 180);
+    if (this.meta.coins < cost) {
+      this.flash("No tienes suficientes fragmentos.");
+      this.emit();
+      return;
+    }
+    this.meta.coins -= cost;
+    const slot = GEAR_SLOTS[Math.floor(Math.random() * GEAR_SLOTS.length)]!.id;
+    this.grantGear(rollGear(slot, rarity, Math.max(1, this.meta.levelSelected)));
     this.emit();
   }
 

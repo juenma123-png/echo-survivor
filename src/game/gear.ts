@@ -76,7 +76,30 @@ const SLOT_POOL: Record<GearSlotId, StatKey[]> = {
   reliquia: ["dmg", "hp", "crit", "magnet", "regen", "calm", "speed"],
 };
 
-/** Nombres base por ranura. Son propios del juego (no de otros títulos). */
+/** Icono de cada pieza base. La calidad cambia el marco, no el dibujo. */
+export const GEAR_ICON: Record<string, string> = {
+  "Filo de eco": "/sprites/gear/filo.png",
+  "Arco de niebla": "/sprites/gear/arco.png",
+  "Vara de ceniza": "/sprites/gear/vara.png",
+  "Guadaña de vidrio": "/sprites/gear/guadana.png",
+  "Capucha cosida": "/sprites/gear/capucha.png",
+  "Diadema de escarcha": "/sprites/gear/diadema.png",
+  "Yelmo hueco": "/sprites/gear/yelmo.png",
+  "Coraza hueca": "/sprites/gear/coraza.png",
+  "Manto de hielo": "/sprites/gear/manto.png",
+  "Sudario de musgo": "/sprites/gear/sudario.png",
+  "Pasos de musgo": "/sprites/gear/botas.png",
+  "Grebas de brasa": "/sprites/gear/grebas.png",
+  "Sandalias de ceniza": "/sprites/gear/sandalias.png",
+  "Amuleto de hilo": "/sprites/gear/amuleto.png",
+  "Brújula muda": "/sprites/gear/brujula.png",
+  "Velo quieto": "/sprites/gear/velo.png",
+  "Cristal rememorado": "/sprites/gear/cristal.png",
+};
+
+export function gearIcon(base: string) {
+  return GEAR_ICON[base] ?? "/sprites/gear/filo.png";
+}
 const BASE_NAMES: Record<GearSlotId, string[]> = {
   arma: ["Filo de eco", "Arco de niebla", "Vara de ceniza", "Guadaña de vidrio"],
   casco: ["Capucha cosida", "Diadema de escarcha", "Yelmo hueco"],

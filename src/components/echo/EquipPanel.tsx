@@ -8,6 +8,7 @@ import {
   describeAffix,
   dissolveValue,
   emptyTotals,
+  gearIcon,
   rarityColor,
   rarityName,
   totalsOf,
@@ -63,30 +64,27 @@ export function EquipPanel({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pb-2">
       {/* Ranuras equipadas */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-5 gap-2">
         {GEAR_SLOTS.map((s) => {
           const item = inventory.find((it) => it.uid === equipped[s.id]);
           return (
             <button
               key={s.id}
               type="button"
-              onClick={() => (item ? onUnequip(s.id) : setFilter(s.id))}
-              className="flex min-h-[92px] flex-col gap-1 rounded-2xl border bg-panel/80 p-2.5 text-left"
-              style={{ borderColor: item ? rarityColor(item.rarity) : undefined }}
-              aria-label={item ? `Quitar ${item.base}` : `Ver ${s.name}`}
+              onClick={() => (item ? setSelected(item.uid) : setFilter(s.id))}
+              className="flex min-h-[108px] flex-col items-center gap-1 rounded-2xl border bg-panel/80 p-2 text-center"
+              style={{ borderColor: item ? rarityColor(item.rarity) : undefined, boxShadow: item ? `0 0 16px ${rarityColor(item.rarity)}33` : undefined }}
             >
               <span className="text-[10px] font-bold uppercase tracking-widest text-muted">{s.name}</span>
               {item ? (
                 <>
-                  <span className="text-sm font-bold leading-tight" style={{ color: rarityColor(item.rarity) }}>
+                  <img src={gearIcon(item.base)} alt="" className="size-12 object-contain" style={{ imageRendering: "pixelated" }} />
+                  <span className="line-clamp-2 text-[11px] font-bold leading-tight" style={{ color: rarityColor(item.rarity) }}>
                     {item.base}
-                  </span>
-                  <span className="text-[10px] text-muted">
-                    {rarityName(item.rarity)} · Nv. {item.level} · toca para quitar
                   </span>
                 </>
               ) : (
-                <span className="text-xs text-muted">{s.hint}</span>
+                <span className="mt-3 text-[11px] text-muted">Vacío</span>
               )}
             </button>
           );
@@ -127,14 +125,14 @@ export function EquipPanel({
                 key={it.uid}
                 type="button"
                 onClick={() => setSelected(it.uid)}
-                className={`flex flex-col gap-1 rounded-xl border bg-panel/80 p-2 text-left ${selected === it.uid ? "ring-2 ring-cyan" : ""}`}
+                className={`flex flex-col items-center gap-1 rounded-xl border bg-panel/80 p-2 text-center ${selected === it.uid ? "ring-2 ring-cyan" : ""}`}
                 style={{ borderColor: rarityColor(it.rarity) }}
               >
-                <span className="text-[10px] font-bold text-muted">Nv. {it.level}</span>
-                <span className="text-xs font-bold leading-tight" style={{ color: rarityColor(it.rarity) }}>
+                <img src={gearIcon(it.base)} alt="" className="size-10 object-contain" style={{ imageRendering: "pixelated" }} />
+                <span className="line-clamp-2 text-[10px] font-bold leading-tight" style={{ color: rarityColor(it.rarity) }}>
                   {it.base}
                 </span>
-                <span className="text-[10px] text-muted">{on ? "Equipado" : rarityName(it.rarity)}</span>
+                <span className="text-[10px] text-muted">{on ? "Equipado" : `Nv.${it.level}`}</span>
               </button>
             );
           })}
@@ -144,13 +142,16 @@ export function EquipPanel({
       {/* Detalle del objeto seleccionado */}
       {chosen && (
         <div className="rounded-2xl border bg-panel p-3" style={{ borderColor: rarityColor(chosen.rarity) }}>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <img src={gearIcon(chosen.base)} alt="" className="size-14 object-contain" style={{ imageRendering: "pixelated" }} />
+            <div>
             <p className="font-display text-lg" style={{ color: rarityColor(chosen.rarity) }}>
               {chosen.base}
             </p>
             <p className="text-xs text-muted">
               {rarityName(chosen.rarity)} · Nv. {chosen.level} · {GEAR_SLOTS.find((s) => s.id === chosen.slot)?.name}
             </p>
+            </div>
           </div>
           <ul className="mt-2 flex flex-col gap-0.5 text-sm">
             {chosen.affixes.map((a, i) => (
