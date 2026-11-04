@@ -594,7 +594,7 @@ function Plaza({
             })}
           </div>
           <p className="mt-1 text-[11px] text-muted">
-            {sel % 5 === 0 ? "Al pasarlo: cofre especial, sin objetos comunes." : "Al pasarlo: un objeto común y se abre el siguiente."}
+            {sel % 5 === 0 ? "Al pasarlo: cofre especial con 2 piezas." : sel % 3 === 0 ? "Al pasarlo: una pieza común." : "Equipo garantizado cada 3 niveles; el siguiente se desbloquea al ganar."}
           </p>
         </article>
         <article className="rounded-2xl border border-magenta/40 bg-panel/80 p-3">
@@ -842,9 +842,10 @@ function Victory({ hud, next }: { hud: HudState; next: () => void }) {
         {r && (
           <div className="mt-5 rounded-2xl border border-line bg-panel/70 p-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted">
-              {r.special ? "Cofre especial de nivel" : "Cofre de nivel"}
+              {r.special ? "Cofre especial de nivel" : "Recompensa de hito"}
             </p>
-            <ul className="mt-2 flex flex-col gap-1.5">
+            {r.items.length > 0 ? (
+              <ul className="mt-2 flex flex-col gap-1.5">
               {r.items.map((it) => (
                 <li key={it.uid} className="flex items-center gap-2 text-sm">
                   <img src={gearIcon(it.base)} alt="" className="size-8 object-contain" style={{ imageRendering: "pixelated" }} />
@@ -856,7 +857,10 @@ function Victory({ hud, next }: { hud: HudState; next: () => void }) {
                   </span>
                 </li>
               ))}
-            </ul>
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted">Este nivel no entrega equipo garantizado. El siguiente objeto de hito llega en el nivel 3 o en un cofre especial cada 5 niveles.</p>
+            )}
             <p className="mt-3 text-xs text-cyan">Nivel {r.next} desbloqueado.</p>
           </div>
         )}
