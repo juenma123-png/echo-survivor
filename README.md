@@ -30,7 +30,7 @@ Abajo hay cuatro sitios: Plaza (evento del día y modalidad), Comprar, Equipo y 
 
 ## Equipo
 
-Los cofres, los élites (la mitad de las veces) y los jefes sueltan equipo. Cada objeto tiene una ranura (arma, casco, armadura, botas o reliquia), una calidad y efectos:
+Dentro de la run, los cofres (30 %), los élites (20 %) y los jefes (50 %) pueden soltar equipo; el botín seguro está en el cofre de nivel. Cada objeto tiene una ranura (arma, casco, armadura, botas o reliquia), una calidad y efectos:
 
 | Calidad | Efectos | Valores |
 |---|---|---|

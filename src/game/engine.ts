@@ -29,7 +29,7 @@ import {
   type EnemyKind,
   type RunMode,
 } from "./config";
-import { LEVEL_CHEST_EVERY, LEVEL_CHEST_ITEMS, LEVEL_ENEMY_SCALE } from "./config";
+import { GEAR_DROP_CHANCE, LEVEL_CHEST_EVERY, LEVEL_CHEST_ITEMS, LEVEL_ENEMY_SCALE } from "./config";
 import {
   dissolveValue,
   emptyTotals,
@@ -1768,10 +1768,10 @@ export class EchoGame {
       this.flash(
         e.def.boss ? `${e.def.name} cae. Un altar y un Eco despiertan.` : "Un Eco yace en el suelo. Acércate.",
       );
-      // Botín de equipo: el jefe siempre suelta uno; los élites, la mitad de las veces.
+      // Botín de equipo: probabilidades en GEAR_DROP_CHANCE (jefe 50%, élite 20%).
       // Se llama después del mensaje de Eco para que el aviso de equipo quede visible.
-      if (e.def.boss) this.grantGear(rollDrop("boss", this.time / 60, this.gearLevel()));
-      else if (Math.random() < 0.5) this.grantGear(rollDrop("elite", this.time / 60, this.gearLevel()));
+      const dropSrc = e.def.boss ? "boss" : "elite";
+      if (Math.random() < GEAR_DROP_CHANCE[dropSrc]) this.grantGear(rollDrop(dropSrc, this.time / 60, this.gearLevel()));
     } else if (e.def.kind === "specter") {
       const id = pick(ECO_POOL);
       this.pickups.push({ kind: "echoOrb", x: e.x, y: e.y, used: false, ecoId: id, manual: true });
@@ -1993,8 +1993,8 @@ export class EchoGame {
       this.flash("Cofre — fragmentos y un respiro.");
       this.audio.pickup();
       this.hudDirty = true;
-      // Cada cofre suelta un objeto de equipo; el aviso se muestra después del de fragmentos.
-      this.grantGear(rollDrop("chest", this.time / 60, this.gearLevel()));
+      // Un cofre suelta equipo solo a veces (GEAR_DROP_CHANCE.chest); el aviso sale después del de fragmentos.
+      if (Math.random() < GEAR_DROP_CHANCE.chest) this.grantGear(rollDrop("chest", this.time / 60, this.gearLevel()));
       return;
     }
     if (k.kind === "altar") {
