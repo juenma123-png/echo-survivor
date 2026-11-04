@@ -278,7 +278,9 @@ function tokenIdentityKey(token: string): string {
             .digest("base64url");
         }
       }
-    } catch {}
+    } catch {
+      // Un token no interpretable se trata como dato opaco y se usa su hash completo.
+    }
   }
   return createHash("sha256").update(token).digest("base64url");
 }
