@@ -110,6 +110,6 @@ Se conservan en esta rama:
 ## Estado de verificación
 
 - Cambios descritos en esta rama: revisión estática por IA.
-- Build/typecheck/lint/tests: pendientes de ejecutar.
+- Typecheck y lint se ejecutan en CI. El primer intento de tests completos reveló dependencias de fixtures locales ignorados en `.grok/`; se separó un subconjunto portable para CI. Resultado de la nueva ejecución: pendiente.
 - Prueba visual en navegador y móvil: pendiente.
 - No afirmar que los bugs están resueltos en runtime hasta ejecutar pruebas.
