@@ -1051,26 +1051,32 @@ export class EchoGame {
   private seedProps() {
     this.props = [];
     const kinds: Prop["kind"][] = ["rock", "crystal", "tree", "pillar"];
-    for (let i = 0; i < 64; i++) {
+    const center = WORLD / 2;
+
+    // Garantiza que las cuatro estructuras puedan verse desde el punto inicial.
+    const visibleSet: Array<{ kind: Prop["kind"]; dx: number; dy: number }> = [
+      { kind: "tree", dx: -360, dy: -145 },
+      { kind: "pillar", dx: 360, dy: -145 },
+      { kind: "crystal", dx: -360, dy: 145 },
+      { kind: "rock", dx: 360, dy: 145 },
+    ];
+    for (const item of visibleSet) {
+      const hp = item.kind === "rock" ? 46 : 0;
+      this.props.push({
+        x: center + item.dx, y: center + item.dy, kind: item.kind,
+        s: 1.1, hp, maxHp: hp, cd: 0, broken: false,
+      });
+    }
+
+    // El resto conserva la distribución aleatoria del mundo.
+    for (let i = 0; i < 60; i++) {
       for (let t = 0; t < 14; t++) {
         const x = rand(90, WORLD - 90);
         const y = rand(90, WORLD - 90);
         if (this.blockedSpot(x, y, 70)) continue;
-        this.props.push({
-          x,
-          y,
-          kind: pick(kinds),
-          s: rand(0.9, 1.25),
-          hp: 0,
-          maxHp: 0,
-          cd: 0,
-          broken: false,
-        });
-        const pr = this.props[this.props.length - 1]!;
-        if (pr.kind === "rock") {
-          pr.maxHp = 46;
-          pr.hp = 46;
-        }
+        const kind = pick(kinds);
+        const hp = kind === "rock" ? 46 : 0;
+        this.props.push({ x, y, kind, s: rand(0.9, 1.25), hp, maxHp: hp, cd: 0, broken: false });
         break;
       }
     }
@@ -1081,7 +1087,7 @@ export class EchoGame {
     const fixed: Pickup[] = [
       { kind: "ghost", x: WORLD / 2 + 240, y: WORLD / 2 - 30, used: false },
       { kind: "chest", x: WORLD / 2 - 200, y: WORLD / 2 + 170, used: false },
-      { kind: "altar", x: WORLD / 2 + 60, y: WORLD / 2 + 280, used: false },
+      { kind: "altar", x: WORLD / 2 + 60, y: WORLD / 2 + 180, used: false },
     ];
     for (const s of fixed) this.pickups.push(s);
     const extra: Pickup["kind"][] = ["ghost", "ghost", "ghost", "chest", "chest", "chest", "chest", "altar", "altar"];
@@ -1788,7 +1794,7 @@ export class EchoGame {
       this.flash(
         e.def.boss ? `${e.def.name} cae. Un altar y un Eco despiertan.` : "Un Eco yace en el suelo. Acércate.",
       );
-      // Botín de equipo: probabilidades en GEAR_DROP_CHANCE (jefe 50%, élite 20%).
+      // Botín de equipo: probabilidades reducidas y centralizadas en GEAR_DROP_CHANCE.
       // Se llama después del mensaje de Eco para que el aviso de equipo quede visible.
       const dropSrc = e.def.boss ? "boss" : "elite";
       if (Math.random() < GEAR_DROP_CHANCE[dropSrc]) this.grantGear(rollDrop(dropSrc, this.time / 60, this.gearLevel()));
@@ -1796,7 +1802,7 @@ export class EchoGame {
       const id = pick(ECO_POOL);
       this.pickups.push({ kind: "echoOrb", x: e.x, y: e.y, used: false, ecoId: id, manual: true });
       this.float(e.x, e.y - 28, "ECO", "#c4b5fd");
-    } else if (Math.random() < 0.045) {
+    } else if (Math.random() < 0.025) {
       this.pickups.push({ kind: "chest", x: e.x, y: e.y, used: false });
     }
   }
@@ -2187,7 +2193,8 @@ export class EchoGame {
     if (level >= this.meta.levelUnlocked) this.meta.levelUnlocked = next;
     this.meta.levelSelected = this.meta.levelUnlocked;
     const special = level % LEVEL_CHEST_EVERY === 0;
-    const items = rollLevelReward(level, special, LEVEL_CHEST_ITEMS);
+    const rewardDue = special || level % 3 === 0;
+    const items = rewardDue ? rollLevelReward(level, special, LEVEL_CHEST_ITEMS) : [];
     for (const item of items) this.grantGear(item);
     this.levelResult = { level, next, special, items };
   }
@@ -2266,17 +2273,78 @@ export class EchoGame {
     }
   }
 
-  private drawProp(pr: Prop, camX: number, camY: number) {
-    const im = this.sprites[`prop_${pr.kind}`];
-    if (!im || pr.broken) return;
+  private drawFallbackProp(pr: Prop, x: number, y: number) {
     const ctx = this.ctx;
-    const dw = im.width * pr.s;
-    const dh = im.height * pr.s;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(pr.s, pr.s);
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+
+    if (pr.kind === "rock") {
+      ctx.fillStyle = "#586174";
+      ctx.strokeStyle = "#aab4c7";
+      ctx.beginPath();
+      ctx.moveTo(-28, -5);
+      ctx.lineTo(-22, -30);
+      ctx.lineTo(-4, -43);
+      ctx.lineTo(22, -28);
+      ctx.lineTo(30, -5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (pr.kind === "crystal") {
+      ctx.fillStyle = "#45cde8";
+      ctx.strokeStyle = "#b7f6ff";
+      ctx.beginPath();
+      ctx.moveTo(0, -52);
+      ctx.lineTo(22, -23);
+      ctx.lineTo(12, -3);
+      ctx.lineTo(-14, -3);
+      ctx.lineTo(-23, -25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#d7fbff";
+      ctx.beginPath();
+      ctx.moveTo(0, -48);
+      ctx.lineTo(2, -7);
+      ctx.stroke();
+    } else if (pr.kind === "tree") {
+      ctx.fillStyle = "#76533d";
+      ctx.fillRect(-6, -28, 12, 28);
+      ctx.fillStyle = "#245c4b";
+      ctx.strokeStyle = "#6abf91";
+      ctx.beginPath();
+      ctx.arc(0, -37, 25, 0, TAU);
+      ctx.arc(-16, -25, 17, 0, TAU);
+      ctx.arc(16, -25, 17, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#626b83";
+      ctx.strokeStyle = "#c1c9d8";
+      ctx.fillRect(-15, -58, 30, 55);
+      ctx.strokeRect(-15, -58, 30, 55);
+      ctx.fillRect(-22, -64, 44, 9);
+      ctx.fillRect(-22, -5, 44, 8);
+    }
+
+    ctx.restore();
+  }
+
+  private drawProp(pr: Prop, camX: number, camY: number) {
+    if (pr.broken) return;
+    const im = this.sprites[`prop_${pr.kind}`];
+    const dw = (im?.width ?? 64) * pr.s;
+    const dh = (im?.height ?? 72) * pr.s;
+    const ctx = this.ctx;
     const x = pr.x - camX;
     const y = pr.y - camY;
     ctx.save();
     if (pr.cd > 0) ctx.globalAlpha = 0.45;
-    ctx.drawImage(im, x - dw / 2, y - dh, dw, dh);
+    if (im?.width) ctx.drawImage(im, x - dw / 2, y - dh, dw, dh);
+    else this.drawFallbackProp(pr, x, y);
     ctx.restore();
     if (pr.kind === "rock" && pr.hp < pr.maxHp) {
       const w = 22;
@@ -2286,16 +2354,8 @@ export class EchoGame {
       ctx.fillRect(x - w / 2, y - dh - 6, w * clamp(pr.hp / pr.maxHp, 0, 1), 3);
     }
     if (Math.hypot(pr.x - this.player.x, pr.y - this.player.y) < 150) {
-      const tag =
-        pr.cd > 0
-          ? "En reposo"
-          : pr.kind === "crystal"
-            ? "E  Luz"
-            : pr.kind === "tree"
-              ? "E  Recuerdo"
-              : pr.kind === "pillar"
-                ? "E  Pulso"
-                : "E  Romper";
+      const tag = pr.cd > 0 ? "En reposo" : pr.kind === "crystal" ? "E  Luz" :
+        pr.kind === "tree" ? "E  Recuerdo" : pr.kind === "pillar" ? "E  Pulso" : "E  Romper";
       this.drawTag(x, y - dh - 8, tag);
     }
   }
@@ -2460,6 +2520,24 @@ export class EchoGame {
     this.drawSheet(im, frame, x, y, 26, false, false, 2, 2);
   }
 
+  private drawFallbackPickup(k: Pickup, x: number, y: number) {
+    const ctx = this.ctx;
+    ctx.save(); ctx.translate(x, y); ctx.lineWidth = 3;
+    if (k.kind === "chest") {
+      ctx.fillStyle = "#8b5a35"; ctx.strokeStyle = "#f2c879";
+      ctx.fillRect(-22, -25, 44, 23); ctx.strokeRect(-22, -25, 44, 23);
+      ctx.fillStyle = "#d9a441"; ctx.fillRect(-25, -31, 50, 9); ctx.strokeRect(-25, -31, 50, 9);
+      ctx.fillStyle = "#f7e3a1"; ctx.fillRect(-3, -22, 6, 12);
+    } else {
+      ctx.fillStyle = "#515d78"; ctx.strokeStyle = "#a9c4e8";
+      ctx.fillRect(-24, -10, 48, 10); ctx.strokeRect(-24, -10, 48, 10);
+      ctx.fillRect(-18, -36, 8, 27); ctx.fillRect(10, -36, 8, 27);
+      ctx.strokeRect(-18, -36, 8, 27); ctx.strokeRect(10, -36, 8, 27);
+      ctx.fillStyle = "#5ce8ff"; ctx.beginPath(); ctx.arc(0, -28, 8, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private drawPickup(k: Pickup, camX: number, camY: number) {
     const x = k.x - camX;
     const y = k.y - camY;
@@ -2487,8 +2565,10 @@ export class EchoGame {
     }
     const key = k.kind === "chest" ? "prop_chest" : "prop_altar";
     const im = this.sprites[key];
-    if (im) this.ctx.drawImage(im, x - im.width / 2, y - im.height, im.width, im.height);
-    if (near) this.drawTag(x, y - (im?.height ?? 48) - 6, k.kind === "chest" ? "E  Cofre" : "E  Altar");
+    const height = im?.height ?? 56;
+    if (im?.width) this.ctx.drawImage(im, x - im.width / 2, y - im.height, im.width, im.height);
+    else this.drawFallbackPickup(k, x, y);
+    if (near) this.drawTag(x, y - height - 6, k.kind === "chest" ? "E  Cofre" : "E  Altar");
   }
 
   private drawTag(x: number, y: number, text: string) {

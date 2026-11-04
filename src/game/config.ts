@@ -10,7 +10,7 @@ export const LEVEL_ENEMY_SCALE = 0.25; // +25% de vida y daño de enemigos por n
 export const LEVEL_CHEST_EVERY = 5; // cada 5 niveles, cofre especial con mejor equipo
 export const LEVEL_CHEST_ITEMS = 2; // objetos que da el cofre especial
 /** Probabilidad de que un cofre, élite o jefe suelte equipo dentro de la run (el premio gordo es el cofre de nivel). */
-export const GEAR_DROP_CHANCE = { chest: 0.3, elite: 0.2, boss: 0.5 };
+export const GEAR_DROP_CHANCE = { chest: 0.12, elite: 0.1, boss: 0.3 };
 export const BOSS_AT = 480;
 export const ELITE_EVERY = 45;
 export const CORDURA_MAX = 100;
