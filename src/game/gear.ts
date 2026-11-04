@@ -212,6 +212,26 @@ export function describeAffix(a: GearAffix) {
   return `+${Math.round(a.value * 100)}% ${info.label}`;
 }
 
+/**
+ * Pesos del cofre especial de nivel (cada 5 niveles). No hay común: siempre sale algo mejor.
+ * Estos pesos son los que hay que tocar para cambiar cuánto cuesta un objeto épico.
+ */
+export const LEVEL_CHEST_WEIGHTS: Record<Rarity, number> = { comun: 0, raro: 50, epico: 38, legendario: 12 };
+
+/**
+ * Recompensa de un nivel superado. Nivel normal: un objeto común de ranura aleatoria.
+ * Cofre especial: varios objetos con los pesos de LEVEL_CHEST_WEIGHTS.
+ */
+export function rollLevelReward(level: number, special: boolean, count: number): GearItem[] {
+  const items: GearItem[] = [];
+  for (let i = 0; i < (special ? count : 1); i++) {
+    const slot = GEAR_SLOTS[Math.floor(Math.random() * GEAR_SLOTS.length)]!.id;
+    const rarity = special ? pickWeighted(LEVEL_CHEST_WEIGHTS) : "comun";
+    items.push(rollGear(slot, rarity, level));
+  }
+  return items;
+}
+
 export function isRarityAtLeast(r: Rarity, min: Rarity) {
   return RARITY_ORDER.indexOf(r) >= RARITY_ORDER.indexOf(min);
 }

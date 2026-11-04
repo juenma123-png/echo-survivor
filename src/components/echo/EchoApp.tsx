@@ -23,7 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 import { EchoGame, formatTime, type HudState, type Screen } from "@/game/engine";
-import type { GearSlotId } from "@/game/gear";
+import { rarityColor, rarityName, type GearSlotId } from "@/game/gear";
 import { EquipPanel } from "@/components/echo/EquipPanel";
 import { ENEMY_NOTES, ENEMIES, GDD_TEXT, GEAR, META_SHOP, RUN_MODES, shopPrice, todayEvent, UPGRADES, type RunMode } from "@/game/config";
 
@@ -75,11 +75,14 @@ const emptyHud = (): HudState => ({
     mode: "ciclo",
     inventory: [],
     equipped: { arma: "", casco: "", armadura: "", botas: "", reliquia: "" },
+    levelUnlocked: 1,
+    levelSelected: 1,
   },
   dashCd: 0,
   dashMax: 1.35,
   damageDealt: 0,
   eventText: "",
+  levelResult: null,
   interact: "",
   ready: false,
 });
@@ -228,6 +231,7 @@ export function EchoApp() {
           onEquipItem={(uid) => g()?.equipItem(uid)}
           onUnequipSlot={(slot) => g()?.unequipSlot(slot)}
           onDissolveItem={(uid) => g()?.dissolveItem(uid)}
+          onSetLevel={(n) => g()?.setLevel(n)}
         />
       )}
       {hud.screen === "paused" && (
@@ -265,6 +269,7 @@ export function EchoApp() {
           onEquipItem={(uid) => g()?.equipItem(uid)}
           onUnequipSlot={(slot) => g()?.unequipSlot(slot)}
           onDissolveItem={(uid) => g()?.dissolveItem(uid)}
+          onSetLevel={(n) => g()?.setLevel(n)}
         />
       )}
       {hud.screen === "codex" &&<Codex back={() => g()?.open("menu")} />}
@@ -492,6 +497,7 @@ function Hub({
   onEquipItem,
   onUnequipSlot,
   onDissolveItem,
+  onSetLevel,
 }: {
   hud: HudState;
   tab: HubTab;
@@ -504,6 +510,7 @@ function Hub({
   onEquipItem: (uid: string) => void;
   onUnequipSlot: (slot: GearSlotId) => void;
   onDissolveItem: (uid: string) => void;
+  onSetLevel: (level: number) => void;
 }) {
   const event = todayEvent();
   return (
@@ -522,7 +529,7 @@ function Hub({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
-        {tab === "menu" && <Plaza hud={hud} eventName={event.name} eventDesc={event.desc} start={start} setMode={setMode} go={go} />}
+        {tab === "menu" && <Plaza hud={hud} eventName={event.name} eventDesc={event.desc} start={start} setMode={setMode} setLevel={onSetLevel} go={go} />}
         {tab === "shop" && <Shop hud={hud} buy={buyGear} />}
         {tab === "gear" && (
           <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -546,6 +553,7 @@ function Plaza({
   eventDesc,
   start,
   setMode,
+  setLevel,
   go,
 }: {
   hud: HudState;
@@ -553,11 +561,44 @@ function Plaza({
   eventDesc: string;
   start: () => void;
   setMode: (mode: RunMode) => void;
+  setLevel: (level: number) => void;
   go: (s: Screen) => void;
 }) {
+  const sel = hud.meta.levelSelected ?? 1;
+  const unlocked = hud.meta.levelUnlocked ?? 1;
   return (
     <div className="grid h-full gap-3 md:grid-cols-[1.15fr_0.85fr]">
       <div className="flex flex-col gap-3">
+        <article className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan/40 bg-panel/80 p-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan">Nivel</p>
+            <h2 className="font-display text-2xl">Nivel {sel}</h2>
+            <p className="text-[11px] text-muted">
+              Enemigos +{Math.round((sel - 1) * 25)}% de vida y daño · {unlocked} desbloqueado{unlocked > 1 ? "s" : ""}
+              {sel % 5 === 0 ? " · cofre especial al superarlo" : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={sel <= 1}
+              onClick={() => setLevel(sel - 1)}
+              className="size-10 rounded-full border border-line text-lg font-bold disabled:opacity-30"
+              aria-label="Nivel anterior"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              disabled={sel >= unlocked}
+              onClick={() => setLevel(sel + 1)}
+              className="size-10 rounded-full border border-line text-lg font-bold disabled:opacity-30"
+              aria-label="Nivel siguiente"
+            >
+              ›
+            </button>
+          </div>
+        </article>
         <article className="rounded-2xl border border-magenta/40 bg-panel/80 p-3">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-magenta">Evento de hoy</p>
           <h2 className="mt-1 font-display text-lg">{eventName}</h2>
@@ -837,11 +878,34 @@ function Death({ hud, retry, menu }: { hud: HudState; retry: () => void; menu: (
 }
 
 function Victory({ hud, next }: { hud: HudState; next: () => void }) {
+  const r = hud.levelResult;
   return (
     <FullCard>
       <Panel>
-        <h2 className="font-display text-center text-3xl text-cyan">¡Run completada!</h2>
+        <h2 className="font-display text-center text-3xl text-cyan">
+          {r ? `¡Nivel ${r.level} superado!` : "¡Run completada!"}
+        </h2>
         <Stats hud={hud} />
+        {r && (
+          <div className="mt-5 rounded-2xl border border-line bg-panel/70 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted">
+              {r.special ? "Cofre especial de nivel" : "Cofre de nivel"}
+            </p>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {r.items.map((it) => (
+                <li key={it.uid} className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="font-bold" style={{ color: rarityColor(it.rarity) }}>
+                    {it.base}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {rarityName(it.rarity)} · Nv. {it.level}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-cyan">Nivel {r.next} desbloqueado.</p>
+          </div>
+        )}
         <Primary onClick={next} className="mt-6">
           Siguiente
         </Primary>

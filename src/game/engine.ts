@@ -29,10 +29,12 @@ import {
   type EnemyKind,
   type RunMode,
 } from "./config";
+import { LEVEL_CHEST_EVERY, LEVEL_CHEST_ITEMS, LEVEL_ENEMY_SCALE } from "./config";
 import {
   dissolveValue,
   emptyTotals,
   rollDrop,
+  rollLevelReward,
   totalsOf,
   type GearItem,
   type GearSlotId,
@@ -88,6 +90,10 @@ export interface MetaState {
   inventory: GearItem[];
   /** uid del objeto equipado en cada ranura ("" = vacía). */
   equipped: Record<GearSlotId, string>;
+  /** Nivel más alto desbloqueado (empieza en 1). */
+  levelUnlocked: number;
+  /** Nivel elegido para la siguiente run. */
+  levelSelected: number;
 }
 
 function emptyEquipped(): Record<GearSlotId, string> {
@@ -115,11 +121,21 @@ export interface HudState {
   dashMax: number;
   damageDealt: number;
   eventText: string;
+  /** Recompensa del último nivel ganado (null si no se ganó nada). */
+  levelResult: LevelResult | null;
   interact: string;
   ready: boolean;
 }
 
 export type UiListener = (h: HudState) => void;
+
+/** Resultado de un nivel ganado: qué se superó, qué se desbloqueó y qué cofre salió. */
+export interface LevelResult {
+  level: number;
+  next: number;
+  special: boolean;
+  items: GearItem[];
+}
 
 type SpriteMap = Record<string, HTMLImageElement>;
 
@@ -305,6 +321,8 @@ function defaultMeta(): MetaState {
     mode: "ciclo",
     inventory: [],
     equipped: emptyEquipped(),
+    levelUnlocked: 1,
+    levelSelected: 1,
   };
 }
 
@@ -319,6 +337,8 @@ function readMeta(): MetaState {
     // Solo conservamos objetos con forma válida; el equipo guardado a mano se limpia si no existe.
     meta.inventory = meta.inventory.filter((it) => it && typeof it.uid === "string" && Array.isArray(it.affixes));
     meta.equipped = { ...emptyEquipped(), ...(meta.equipped ?? {}) };
+    meta.levelUnlocked = Math.max(1, Math.floor(Number(meta.levelUnlocked) || 1));
+    meta.levelSelected = clamp(Math.floor(Number(meta.levelSelected) || 1), 1, meta.levelUnlocked);
     for (const slot of Object.keys(meta.equipped) as GearSlotId[]) {
       if (!meta.inventory.some((it) => it.uid === meta.equipped[slot] && it.slot === slot)) meta.equipped[slot] = "";
     }
@@ -472,6 +492,10 @@ export class EchoGame {
   driftT = 0;
   /** Segundos restantes del evento Resonancia (enemigos con +vida). */
   resonT = 0;
+  /** Nivel que se está jugando en esta run. */
+  runLevel = 1;
+  /** Recompensa del nivel ganado, para la pantalla de victoria. */
+  levelResult: LevelResult | null = null;
   /** Cadáveres en animación de muerte (solo visuales). */
   corpses: Corpse[] = [];
   raf = 0;
@@ -630,6 +654,8 @@ export class EchoGame {
   startRun() {
     this.audio.unlock();
     this.meta.runs += 1;
+    this.runLevel = this.meta.levelSelected;
+    this.levelResult = null;
     writeMeta(this.meta);
     this.resetWorld(true);
     this.screen = "playing";
@@ -864,6 +890,13 @@ export class EchoGame {
 
   setMode(mode: RunMode) {
     this.meta.mode = mode;
+    writeMeta(this.meta);
+    this.emit();
+  }
+
+  /** Elige el nivel de la próxima run (solo entre los desbloqueados). */
+  setLevel(level: number) {
+    this.meta.levelSelected = clamp(Math.floor(level), 1, this.meta.levelUnlocked);
     writeMeta(this.meta);
     this.emit();
   }
@@ -1382,6 +1415,8 @@ export class EchoGame {
     const def = ENEMIES[kind];
     const ramp = 1 + Math.floor(this.time / CONFIG.rampEvery) * CONFIG.enemyScalePerRamp;
     const reson = this.resonT > 0 ? 1.25 : 1;
+    // Cada nivel más fuerte: más vida y más daño (los jefes también, por pasar por aquí).
+    const levelMul = 1 + (this.runLevel - 1) * LEVEL_ENEMY_SCALE;
     let x: number;
     let y: number;
     if (at) {
@@ -1410,11 +1445,11 @@ export class EchoGame {
       def,
       x,
       y,
-      hp: def.hp * ramp * reson,
-      maxHp: def.hp * ramp * reson,
+      hp: def.hp * ramp * reson * levelMul,
+      maxHp: def.hp * ramp * reson * levelMul,
       r: def.r,
       speed: def.speed * (1 + this.time / 1400),
-      dmg: def.dmg * ramp,
+      dmg: def.dmg * ramp * levelMul,
       xp: def.xp,
       shoot: rand(0.4, 1.6),
       phase: 0,
@@ -2114,11 +2149,27 @@ export class EchoGame {
     if (todayEvent().id === "resonancia") gained = Math.floor(gained * 1.25);
     this.meta.coins += gained;
     this.meta.best = Math.max(this.meta.best, this.time);
+    if (win) this.completeLevel();
     writeMeta(this.meta);
     this.coins = gained;
     this.screen = win ? "win" : "dead";
     if (!win) this.audio.death();
     this.emit();
+  }
+
+  /**
+   * Nivel superado: desbloquea el siguiente, deja el cofre (común, o especial cada
+   * LEVEL_CHEST_EVERY niveles) y lo guarda en el inventario.
+   */
+  private completeLevel() {
+    const level = this.runLevel;
+    const next = level + 1;
+    if (level >= this.meta.levelUnlocked) this.meta.levelUnlocked = next;
+    this.meta.levelSelected = this.meta.levelUnlocked;
+    const special = level % LEVEL_CHEST_EVERY === 0;
+    const items = rollLevelReward(level, special, LEVEL_CHEST_ITEMS);
+    for (const item of items) this.grantGear(item);
+    this.levelResult = { level, next, special, items };
   }
 
   /* ---------------- dibujo ---------------- */
@@ -2507,6 +2558,7 @@ export class EchoGame {
       dashMax: CONFIG.dashCooldown,
       damageDealt: Math.floor(this.damageDealt),
       eventText: this.eventText,
+      levelResult: this.levelResult,
       interact: this.screen === "playing" ? this.hint : "",
       ready: this.ready,
     });

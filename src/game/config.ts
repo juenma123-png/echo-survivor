@@ -4,6 +4,11 @@ export const WORLD = 4200;
 export const TILE = 256;
 export const MAX_ECOS = 3;
 export const RUN_LENGTH = 900;
+
+/** Niveles: cada nivel es una run completa. Ganarla desbloquea el siguiente; morir no. */
+export const LEVEL_ENEMY_SCALE = 0.25; // +25% de vida y daño de enemigos por nivel
+export const LEVEL_CHEST_EVERY = 5; // cada 5 niveles, cofre especial con mejor equipo
+export const LEVEL_CHEST_ITEMS = 2; // objetos que da el cofre especial
 export const BOSS_AT = 480;
 export const ELITE_EVERY = 45;
 export const CORDURA_MAX = 100;

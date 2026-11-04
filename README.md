@@ -43,6 +43,16 @@ El nivel del objeto sube cada 3 minutos de run. Los efectos equipados se aplican
 
 Los valores y pesos de caída están en `src/game/gear.ts`.
 
+## Niveles
+
+Una run completa (15 minutos) es un nivel. Si la superas, desbloqueas el siguiente y recibes una recompensa:
+
+- **Nivel normal:** un objeto común de ranura aleatoria.
+- **Cada 5 niveles** (5, 10, 15…): cofre especial con 2 objetos, sin común. Pesos: raro 50 %, épico 38 %, legendario 12 %.
+- **Dificultad:** cada nivel sube un 25 % la vida y el daño de los enemigos.
+
+Puedes elegir cualquier nivel ya desbloqueado desde la Plaza. Los pesos del cofre especial están en `LEVEL_CHEST_WEIGHTS` (`src/game/gear.ts`) y la escala en `LEVEL_ENEMY_SCALE` (`src/game/config.ts`).
+
 ## Enemigos nuevos
 
 Brasa (explota), Luz errante (embiste), Armadura hueca (escudo), Sanguijuela (cura aliados), Espora (frena). Jefes a los 4:00 (Custodio de la Niebla), 8:00 (Corrupto) y 12:00 (Reina de los Ecos). Al morir, si hay hoja `*_death`, se reproducen sus cuatro cuadros.
