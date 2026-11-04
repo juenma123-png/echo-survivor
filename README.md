@@ -30,7 +30,7 @@ Abajo hay cuatro sitios. La Plaza elige el nivel (15 minutos; cada uno sube un 2
 
 ## Equipo
 
-Dentro de la run, los cofres (30 %), los élites (20 %) y los jefes (50 %) pueden soltar equipo; el botín seguro está en el cofre de nivel. Cada objeto tiene una ranura (arma, casco, armadura, botas o reliquia), una calidad y efectos:
+Dentro de la run, los cofres tienen un 12 % de probabilidad de soltar equipo, los élites un 10 % y los jefes un 30 %. Los cofres normales que aparecen al derrotar enemigos también son menos frecuentes (2,5 %). Cada objeto tiene una ranura (arma, casco, armadura, botas o reliquia), una calidad y efectos:
 
 | Calidad | Efectos | Valores |
 |---|---|---|
@@ -45,10 +45,10 @@ Los valores y pesos de caída están en `src/game/gear.ts`.
 
 ## Niveles
 
-Una run completa (15 minutos) es un nivel. Si la superas, desbloqueas el siguiente y recibes una recompensa:
+Una run completa (15 minutos) es un nivel. Si la superas, desbloqueas el siguiente.
 
-- **Nivel normal:** un objeto común de ranura aleatoria.
-- **Cada 5 niveles** (5, 10, 15…): cofre especial con 2 objetos, sin común. Pesos: raro 50 %, épico 38 %, legendario 12 %.
+- **Cada 3 niveles** (3, 6, 9…): un objeto común de ranura aleatoria.
+- **Cada 5 niveles** (5, 10, 15…): cofre especial con 2 objetos, sin común. Si coincide con un hito de 3 niveles, solo se entrega el cofre especial. Pesos: raro 50 %, épico 38 %, legendario 12 %.
 - **Dificultad:** cada nivel sube un 25 % la vida y el daño de los enemigos.
 
 Puedes elegir cualquier nivel ya desbloqueado desde la Plaza. Los pesos del cofre especial están en `LEVEL_CHEST_WEIGHTS` (`src/game/gear.ts`) y la escala en `LEVEL_ENEMY_SCALE` (`src/game/config.ts`).
