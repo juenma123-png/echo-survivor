@@ -531,6 +531,10 @@ export class EchoGame {
   choices: ChoiceHud[] = [];
   pendingEco: EcoDef | null = null;
   hudDirty = true;
+  /** Limita las notificaciones React del HUD a ~12 por segundo durante la partida. */
+  hudElapsed = 0;
+  /** Niveles extra pendientes de elegir después de resolver la mejora actual. */
+  pendingLevelUps = 0;
   reducedMotion = false;
   destroyed = false;
   bound: Array<[string, EventListenerOrEventListenerObject, boolean?]> = [];
@@ -578,6 +582,8 @@ export class EchoGame {
 
   destroy() {
     this.destroyed = true;
+    const testWindow = window as unknown as { __controlsTest?: unknown };
+    delete testWindow.__controlsTest;
     cancelAnimationFrame(this.raf);
     for (const [type, fn, cap] of this.bound) {
       window.removeEventListener(type, fn, cap);
@@ -615,7 +621,7 @@ export class EchoGame {
   private async boot() {
     this.screen = "menu";
     this.resetWorld(false);
-    this.wireControlsTest();
+    if (import.meta.env.DEV) this.wireControlsTest();
     this.ready = true;
     this.emit();
     this.last = performance.now();
@@ -635,6 +641,7 @@ export class EchoGame {
         }
       }),
     );
+    if (this.destroyed) return;
     this.emit();
   }
 
@@ -741,11 +748,16 @@ export class EchoGame {
         break;
     }
     this.choices = [];
-    this.screen = "playing";
     const u = UPGRADES.find((x) => x.id === id);
     this.flash(u?.name ?? "Mejora");
     this.audio.level();
-    this.emit();
+    if (this.pendingLevelUps > 0) {
+      this.pendingLevelUps -= 1;
+      this.openLevelUp();
+    } else {
+      this.screen = "playing";
+      this.emit();
+    }
   }
 
   invokePending() {
@@ -1177,6 +1189,7 @@ export class EchoGame {
   private frame(t: number) {
     const raw = Math.min(0.1, (t - this.last) / 1000 || 0.016);
     this.last = t;
+    this.hudElapsed += raw;
     /*
      * Paso variable: se actualiza una vez por cuadro con el dt real (en pantallas de 120/144 Hz
      * el movimiento queda fluido). Si un cuadro tarda mucho se divide en subpasos de ~1/60 s
@@ -1189,9 +1202,10 @@ export class EchoGame {
       else if (this.screen === "playing") this.update(step);
     }
     this.draw();
-    if (this.hudDirty) {
+    if (this.hudDirty && (this.hudElapsed >= 1 / 12 || this.screen !== "playing")) {
       this.emit();
       this.hudDirty = false;
+      this.hudElapsed = 0;
     }
   }
 
@@ -1280,8 +1294,8 @@ export class EchoGame {
 
     if (this.input.dashQueued) {
       this.input.dashQueued = false;
-      if (p.dashCd <= 0 && (mx || my || mag)) {
-        const dx = mx || (p.flip ? -1 : 1);
+      if (p.dashCd <= 0 && (mx !== 0 || my !== 0)) {
+        const dx = mx;
         const dy = my;
         const n = Math.hypot(dx, dy) || 1;
         p.dashT = CONFIG.dashTime;
@@ -1438,6 +1452,13 @@ export class EchoGame {
   }
 
   private spawnEnemy(kind: EnemyKind, near = false, at?: { x: number; y: number }) {
+    // Límite global: las invocaciones de jefes también cuentan. Se prioriza el nuevo
+    // enemigo retirando primero un enemigo normal; nunca se supera maxEnemies.
+    if (this.aliveEnemies() >= CONFIG.maxEnemies) {
+      const removable = this.enemies.find((enemy) => enemy.alive && !enemy.def.boss && !enemy.def.elite);
+      if (removable) removable.alive = false;
+      else return;
+    }
     const def = ENEMIES[kind];
     const ramp = 1 + Math.floor(this.time / CONFIG.rampEvery) * CONFIG.enemyScalePerRamp;
     const reson = this.resonT > 0 ? 1.25 : 1;
@@ -1679,7 +1700,8 @@ export class EchoGame {
         }
       }
 
-      if (dist < e.r + p.r && p.iframe <= 0) {
+      const contactDist = Math.hypot(e.x - p.x, e.y - p.y);
+      if (contactDist < e.r + p.r && p.iframe <= 0) {
         const dmg = e.dmg * dt * 2.4 * (1 - p.armor);
         p.hp -= dmg;
         p.hurtT = 0.18;
@@ -1844,6 +1866,10 @@ export class EchoGame {
       p.xp -= p.nextXp;
       p.level += 1;
       p.nextXp = Math.floor(p.nextXp * 1.22 + 8);
+      this.pendingLevelUps += 1;
+    }
+    if (this.pendingLevelUps > 0 && this.screen !== "levelup") {
+      this.pendingLevelUps -= 1;
       this.openLevelUp();
     }
   }
