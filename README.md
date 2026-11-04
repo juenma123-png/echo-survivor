@@ -58,6 +58,10 @@ Puedes elegir cualquier nivel ya desbloqueado desde la Plaza. Los pesos del cofr
 Brasa (explota), Luz errante (embiste), Armadura hueca (escudo), Sanguijuela (cura aliados), Espora (frena). Jefes a los 4:00 (Custodio de la Niebla), 8:00 (Corrupto) y 12:00 (Reina de los Ecos). Al morir, si hay hoja `*_death`, se reproducen sus cuatro cuadros.
 
 
+## Coordinación con otras IA
+
+Antes de editar el juego, lee [el informe técnico y la hoja de ruta para IA](docs/AI_HANDOFF_AND_TECHNICAL_ROADMAP.md). Allí están los hallazgos, el contrato de sprites, las decisiones de diseño y el plan de implementación.
+
 ## Arranque
 
 ```bash
