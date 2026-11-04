@@ -129,10 +129,7 @@ export function EchoApp() {
     if (!canvas) return;
     const game = new EchoGame(canvas, (next) => setHud(next));
     gameRef.current = game;
-    const onResize = () => game.resize();
-    window.addEventListener("resize", onResize);
     return () => {
-      window.removeEventListener("resize", onResize);
       game.destroy();
       gameRef.current = null;
     };
