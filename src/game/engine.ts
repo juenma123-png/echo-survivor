@@ -334,13 +334,37 @@ function readMeta(): MetaState {
     if (!raw) return defaultMeta();
     const parsed = JSON.parse(raw) as Partial<MetaState>;
     const meta = { ...defaultMeta(), ...parsed };
+    const finiteNonNegative = (value: unknown, fallback = 0) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.max(0, n) : fallback;
+    };
+    for (const key of ["coins", "damage", "hp", "speed", "magnet", "best", "runs"] as const) {
+      meta[key] = finiteNonNegative(meta[key], defaultMeta()[key]);
+    }
+    meta.runs = Math.floor(meta.runs);
+    meta.shake = typeof meta.shake === "boolean" ? meta.shake : true;
+    meta.music = typeof meta.music === "boolean" ? meta.music : true;
+    meta.sfx = typeof meta.sfx === "boolean" ? meta.sfx : true;
     if (!Array.isArray(meta.owned)) meta.owned = [];
+    meta.owned = meta.owned.filter((id): id is string => typeof id === "string");
     if (!Array.isArray(meta.inventory)) meta.inventory = [];
-    // Solo conservamos objetos con forma válida; el equipo guardado a mano se limpia si no existe.
-    meta.inventory = meta.inventory.filter((it) => it && typeof it.uid === "string" && Array.isArray(it.affixes));
+    const slots = new Set(["arma", "casco", "armadura", "botas", "reliquia"]);
+    const rarities = new Set(["comun", "raro", "epico", "legendario"]);
+    const stats = new Set(["dmg", "hp", "speed", "area", "crit", "regen", "fireRate", "magnet", "armor", "calm", "proj"]);
+    meta.inventory = meta.inventory.filter((it) =>
+      it && typeof it.uid === "string" && typeof it.base === "string" &&
+      slots.has(it.slot) && rarities.has(it.rarity) &&
+      Number.isFinite(Number(it.level)) && Number(it.level) >= 1 &&
+      Array.isArray(it.affixes) && it.affixes.every((affix) =>
+        affix && stats.has(affix.stat) && Number.isFinite(Number(affix.value))
+      )
+    ).slice(0, INVENTORY_CAP);
     meta.equipped = { ...emptyEquipped(), ...(meta.equipped ?? {}) };
-    meta.levelUnlocked = Math.max(1, Math.floor(Number(meta.levelUnlocked) || 1));
-    meta.levelSelected = clamp(Math.floor(Number(meta.levelSelected) || 1), 1, meta.levelUnlocked);
+    for (const slot of Object.keys(meta.equipped) as GearSlotId[]) {
+      if (typeof meta.equipped[slot] !== "string") meta.equipped[slot] = "";
+    }
+    meta.levelUnlocked = clamp(Math.floor(finiteNonNegative(meta.levelUnlocked, 1)), 1, 10000);
+    meta.levelSelected = clamp(Math.floor(finiteNonNegative(meta.levelSelected, 1)), 1, meta.levelUnlocked);
     for (const slot of Object.keys(meta.equipped) as GearSlotId[]) {
       if (!meta.inventory.some((it) => it.uid === meta.equipped[slot] && it.slot === slot)) meta.equipped[slot] = "";
     }
@@ -371,6 +395,8 @@ class Synth {
   heart: number | null = null;
   enabled = true;
   musicOn = true;
+  cordura = 0;
+  private lastCorduraSent = -1;
 
   unlock() {
     if (this.ctx) {
@@ -383,7 +409,7 @@ class Synth {
     this.music = this.ctx.createGain();
     this.sfx = this.ctx.createGain();
     this.master.gain.value = 0.7;
-    this.music.gain.value = 0.18;
+    this.music.gain.value = this.musicOn ? 0.18 + (this.cordura / 100) * 0.08 : 0;
     this.sfx.gain.value = 0.45;
     this.music.connect(this.master);
     this.sfx.connect(this.master);
@@ -449,15 +475,18 @@ class Synth {
 
   setMusic(on: boolean) {
     this.musicOn = on;
-    if (this.music) this.music.gain.setTargetAtTime(on ? 0.18 : 0, this.ctx!.currentTime, 0.05);
+    if (this.music && this.ctx) this.music.gain.setTargetAtTime(on ? 0.18 + (this.cordura / 100) * 0.08 : 0, this.ctx.currentTime, 0.05);
+    this.lastCorduraSent = this.cordura;
   }
   setSfx(on: boolean) {
     this.enabled = on;
   }
   setCordura(n: number) {
-    if (!this.music) return;
-    const extra = (n / 100) * 0.08;
-    this.music.gain.setTargetAtTime(this.musicOn ? 0.18 + extra : 0, this.ctx!.currentTime, 0.2);
+    this.cordura = clamp(n, 0, 100);
+    if (!this.music || !this.ctx || Math.abs(this.cordura - this.lastCorduraSent) < 1) return;
+    const extra = (this.cordura / 100) * 0.08;
+    this.music.gain.setTargetAtTime(this.musicOn ? 0.18 + extra : 0, this.ctx.currentTime, 0.2);
+    this.lastCorduraSent = this.cordura;
   }
 }
 
@@ -546,6 +575,8 @@ export class EchoGame {
     this.ctx = ctx;
     this.onUi = onUi;
     this.meta = readMeta();
+    this.audio.setMusic(this.meta.music);
+    this.audio.setSfx(this.meta.sfx);
     this.reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     this.attachInput();
     this.resize();
