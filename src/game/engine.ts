@@ -334,13 +334,37 @@ function readMeta(): MetaState {
     if (!raw) return defaultMeta();
     const parsed = JSON.parse(raw) as Partial<MetaState>;
     const meta = { ...defaultMeta(), ...parsed };
+    const finiteNonNegative = (value: unknown, fallback = 0) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.max(0, n) : fallback;
+    };
+    for (const key of ["coins", "damage", "hp", "speed", "magnet", "best", "runs"] as const) {
+      meta[key] = finiteNonNegative(meta[key], defaultMeta()[key]);
+    }
+    meta.runs = Math.floor(meta.runs);
+    meta.shake = typeof meta.shake === "boolean" ? meta.shake : true;
+    meta.music = typeof meta.music === "boolean" ? meta.music : true;
+    meta.sfx = typeof meta.sfx === "boolean" ? meta.sfx : true;
     if (!Array.isArray(meta.owned)) meta.owned = [];
+    meta.owned = meta.owned.filter((id): id is string => typeof id === "string");
     if (!Array.isArray(meta.inventory)) meta.inventory = [];
-    // Solo conservamos objetos con forma válida; el equipo guardado a mano se limpia si no existe.
-    meta.inventory = meta.inventory.filter((it) => it && typeof it.uid === "string" && Array.isArray(it.affixes));
+    const slots = new Set(["arma", "casco", "armadura", "botas", "reliquia"]);
+    const rarities = new Set(["comun", "raro", "epico", "legendario"]);
+    const stats = new Set(["dmg", "hp", "speed", "area", "crit", "regen", "fireRate", "magnet", "armor", "calm", "proj"]);
+    meta.inventory = meta.inventory.filter((it) =>
+      it && typeof it.uid === "string" && typeof it.base === "string" &&
+      slots.has(it.slot) && rarities.has(it.rarity) &&
+      Number.isFinite(Number(it.level)) && Number(it.level) >= 1 &&
+      Array.isArray(it.affixes) && it.affixes.every((affix) =>
+        affix && stats.has(affix.stat) && Number.isFinite(Number(affix.value))
+      )
+    ).slice(0, INVENTORY_CAP);
     meta.equipped = { ...emptyEquipped(), ...(meta.equipped ?? {}) };
-    meta.levelUnlocked = Math.max(1, Math.floor(Number(meta.levelUnlocked) || 1));
-    meta.levelSelected = clamp(Math.floor(Number(meta.levelSelected) || 1), 1, meta.levelUnlocked);
+    for (const slot of Object.keys(meta.equipped) as GearSlotId[]) {
+      if (typeof meta.equipped[slot] !== "string") meta.equipped[slot] = "";
+    }
+    meta.levelUnlocked = clamp(Math.floor(finiteNonNegative(meta.levelUnlocked, 1)), 1, 10000);
+    meta.levelSelected = clamp(Math.floor(finiteNonNegative(meta.levelSelected, 1)), 1, meta.levelUnlocked);
     for (const slot of Object.keys(meta.equipped) as GearSlotId[]) {
       if (!meta.inventory.some((it) => it.uid === meta.equipped[slot] && it.slot === slot)) meta.equipped[slot] = "";
     }
@@ -371,6 +395,8 @@ class Synth {
   heart: number | null = null;
   enabled = true;
   musicOn = true;
+  cordura = 0;
+  private lastCorduraSent = -1;
 
   unlock() {
     if (this.ctx) {
@@ -383,7 +409,7 @@ class Synth {
     this.music = this.ctx.createGain();
     this.sfx = this.ctx.createGain();
     this.master.gain.value = 0.7;
-    this.music.gain.value = 0.18;
+    this.music.gain.value = this.musicOn ? 0.18 + (this.cordura / 100) * 0.08 : 0;
     this.sfx.gain.value = 0.45;
     this.music.connect(this.master);
     this.sfx.connect(this.master);
@@ -449,15 +475,18 @@ class Synth {
 
   setMusic(on: boolean) {
     this.musicOn = on;
-    if (this.music) this.music.gain.setTargetAtTime(on ? 0.18 : 0, this.ctx!.currentTime, 0.05);
+    if (this.music && this.ctx) this.music.gain.setTargetAtTime(on ? 0.18 + (this.cordura / 100) * 0.08 : 0, this.ctx.currentTime, 0.05);
+    this.lastCorduraSent = this.cordura;
   }
   setSfx(on: boolean) {
     this.enabled = on;
   }
   setCordura(n: number) {
-    if (!this.music) return;
-    const extra = (n / 100) * 0.08;
-    this.music.gain.setTargetAtTime(this.musicOn ? 0.18 + extra : 0, this.ctx!.currentTime, 0.2);
+    this.cordura = clamp(n, 0, 100);
+    if (!this.music || !this.ctx || Math.abs(this.cordura - this.lastCorduraSent) < 1) return;
+    const extra = (this.cordura / 100) * 0.08;
+    this.music.gain.setTargetAtTime(this.musicOn ? 0.18 + extra : 0, this.ctx.currentTime, 0.2);
+    this.lastCorduraSent = this.cordura;
   }
 }
 
@@ -531,6 +560,10 @@ export class EchoGame {
   choices: ChoiceHud[] = [];
   pendingEco: EcoDef | null = null;
   hudDirty = true;
+  /** Limita las notificaciones React del HUD a ~12 por segundo durante la partida. */
+  hudElapsed = 0;
+  /** Niveles extra pendientes de elegir después de resolver la mejora actual. */
+  pendingLevelUps = 0;
   reducedMotion = false;
   destroyed = false;
   bound: Array<[string, EventListenerOrEventListenerObject, boolean?]> = [];
@@ -542,6 +575,8 @@ export class EchoGame {
     this.ctx = ctx;
     this.onUi = onUi;
     this.meta = readMeta();
+    this.audio.setMusic(this.meta.music);
+    this.audio.setSfx(this.meta.sfx);
     this.reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     this.attachInput();
     this.resize();
@@ -578,6 +613,8 @@ export class EchoGame {
 
   destroy() {
     this.destroyed = true;
+    const testWindow = window as unknown as { __controlsTest?: unknown };
+    delete testWindow.__controlsTest;
     cancelAnimationFrame(this.raf);
     for (const [type, fn, cap] of this.bound) {
       window.removeEventListener(type, fn, cap);
@@ -615,7 +652,7 @@ export class EchoGame {
   private async boot() {
     this.screen = "menu";
     this.resetWorld(false);
-    this.wireControlsTest();
+    if (import.meta.env.DEV) this.wireControlsTest();
     this.ready = true;
     this.emit();
     this.last = performance.now();
@@ -635,19 +672,19 @@ export class EchoGame {
         }
       }),
     );
+    if (this.destroyed) return;
     this.emit();
   }
 
   private wireControlsTest() {
-    const self = this;
     (window as unknown as { __controlsTest: unknown }).__controlsTest = {
-      getYaw: () => self.player?.facing ?? 0,
-      getSpeed: () => Math.hypot(self.player?.vx ?? 0, self.player?.vy ?? 0),
+      getYaw: () => this.player?.facing ?? 0,
+      getSpeed: () => Math.hypot(this.player?.vx ?? 0, this.player?.vy ?? 0),
       setKeys: (codes: string[]) => {
-        self.input.injected = codes;
+        this.input.injected = codes;
       },
       setSteer: (v: number) => {
-        self.input.stickX = -v;
+        this.input.stickX = -v;
       },
     };
   }
@@ -741,11 +778,16 @@ export class EchoGame {
         break;
     }
     this.choices = [];
-    this.screen = "playing";
     const u = UPGRADES.find((x) => x.id === id);
     this.flash(u?.name ?? "Mejora");
     this.audio.level();
-    this.emit();
+    if (this.pendingLevelUps > 0) {
+      this.pendingLevelUps -= 1;
+      this.openLevelUp();
+    } else {
+      this.screen = "playing";
+      this.emit();
+    }
   }
 
   invokePending() {
@@ -1051,26 +1093,32 @@ export class EchoGame {
   private seedProps() {
     this.props = [];
     const kinds: Prop["kind"][] = ["rock", "crystal", "tree", "pillar"];
-    for (let i = 0; i < 64; i++) {
+    const center = WORLD / 2;
+
+    // Garantiza que las cuatro estructuras puedan verse desde el punto inicial.
+    const visibleSet: Array<{ kind: Prop["kind"]; dx: number; dy: number }> = [
+      { kind: "tree", dx: -360, dy: -145 },
+      { kind: "pillar", dx: 360, dy: -145 },
+      { kind: "crystal", dx: -360, dy: 145 },
+      { kind: "rock", dx: 360, dy: 145 },
+    ];
+    for (const item of visibleSet) {
+      const hp = item.kind === "rock" ? 46 : 0;
+      this.props.push({
+        x: center + item.dx, y: center + item.dy, kind: item.kind,
+        s: 1.1, hp, maxHp: hp, cd: 0, broken: false,
+      });
+    }
+
+    // El resto conserva la distribución aleatoria del mundo.
+    for (let i = 0; i < 60; i++) {
       for (let t = 0; t < 14; t++) {
         const x = rand(90, WORLD - 90);
         const y = rand(90, WORLD - 90);
         if (this.blockedSpot(x, y, 70)) continue;
-        this.props.push({
-          x,
-          y,
-          kind: pick(kinds),
-          s: rand(0.9, 1.25),
-          hp: 0,
-          maxHp: 0,
-          cd: 0,
-          broken: false,
-        });
-        const pr = this.props[this.props.length - 1]!;
-        if (pr.kind === "rock") {
-          pr.maxHp = 46;
-          pr.hp = 46;
-        }
+        const kind = pick(kinds);
+        const hp = kind === "rock" ? 46 : 0;
+        this.props.push({ x, y, kind, s: rand(0.9, 1.25), hp, maxHp: hp, cd: 0, broken: false });
         break;
       }
     }
@@ -1081,7 +1129,7 @@ export class EchoGame {
     const fixed: Pickup[] = [
       { kind: "ghost", x: WORLD / 2 + 240, y: WORLD / 2 - 30, used: false },
       { kind: "chest", x: WORLD / 2 - 200, y: WORLD / 2 + 170, used: false },
-      { kind: "altar", x: WORLD / 2 + 60, y: WORLD / 2 + 280, used: false },
+      { kind: "altar", x: WORLD / 2 + 60, y: WORLD / 2 + 180, used: false },
     ];
     for (const s of fixed) this.pickups.push(s);
     const extra: Pickup["kind"][] = ["ghost", "ghost", "ghost", "chest", "chest", "chest", "chest", "altar", "altar"];
@@ -1133,7 +1181,7 @@ export class EchoGame {
         let dx = x - c.x;
         let dy = y - c.y;
         const min = r + c.r;
-        let d2 = dx * dx + dy * dy;
+        const d2 = dx * dx + dy * dy;
         if (d2 >= min * min) continue;
         let d = Math.sqrt(d2);
         if (d < 0.001) {
@@ -1171,6 +1219,7 @@ export class EchoGame {
   private frame(t: number) {
     const raw = Math.min(0.1, (t - this.last) / 1000 || 0.016);
     this.last = t;
+    this.hudElapsed += raw;
     /*
      * Paso variable: se actualiza una vez por cuadro con el dt real (en pantallas de 120/144 Hz
      * el movimiento queda fluido). Si un cuadro tarda mucho se divide en subpasos de ~1/60 s
@@ -1183,9 +1232,10 @@ export class EchoGame {
       else if (this.screen === "playing") this.update(step);
     }
     this.draw();
-    if (this.hudDirty) {
+    if (this.hudDirty && (this.hudElapsed >= 1 / 12 || this.screen !== "playing")) {
       this.emit();
       this.hudDirty = false;
+      this.hudElapsed = 0;
     }
   }
 
@@ -1274,8 +1324,8 @@ export class EchoGame {
 
     if (this.input.dashQueued) {
       this.input.dashQueued = false;
-      if (p.dashCd <= 0 && (mx || my || mag)) {
-        const dx = mx || (p.flip ? -1 : 1);
+      if (p.dashCd <= 0 && (mx !== 0 || my !== 0)) {
+        const dx = mx;
         const dy = my;
         const n = Math.hypot(dx, dy) || 1;
         p.dashT = CONFIG.dashTime;
@@ -1432,6 +1482,13 @@ export class EchoGame {
   }
 
   private spawnEnemy(kind: EnemyKind, near = false, at?: { x: number; y: number }) {
+    // Límite global: las invocaciones de jefes también cuentan. Se prioriza el nuevo
+    // enemigo retirando primero un enemigo normal; nunca se supera maxEnemies.
+    if (this.aliveEnemies() >= CONFIG.maxEnemies) {
+      const removable = this.enemies.find((enemy) => enemy.alive && !enemy.def.boss && !enemy.def.elite);
+      if (removable) removable.alive = false;
+      else return;
+    }
     const def = ENEMIES[kind];
     const ramp = 1 + Math.floor(this.time / CONFIG.rampEvery) * CONFIG.enemyScalePerRamp;
     const reson = this.resonT > 0 ? 1.25 : 1;
@@ -1673,7 +1730,8 @@ export class EchoGame {
         }
       }
 
-      if (dist < e.r + p.r && p.iframe <= 0) {
+      const contactDist = Math.hypot(e.x - p.x, e.y - p.y);
+      if (contactDist < e.r + p.r && p.iframe <= 0) {
         const dmg = e.dmg * dt * 2.4 * (1 - p.armor);
         p.hp -= dmg;
         p.hurtT = 0.18;
@@ -1788,7 +1846,7 @@ export class EchoGame {
       this.flash(
         e.def.boss ? `${e.def.name} cae. Un altar y un Eco despiertan.` : "Un Eco yace en el suelo. Acércate.",
       );
-      // Botín de equipo: probabilidades en GEAR_DROP_CHANCE (jefe 50%, élite 20%).
+      // Botín de equipo: probabilidades reducidas y centralizadas en GEAR_DROP_CHANCE.
       // Se llama después del mensaje de Eco para que el aviso de equipo quede visible.
       const dropSrc = e.def.boss ? "boss" : "elite";
       if (Math.random() < GEAR_DROP_CHANCE[dropSrc]) this.grantGear(rollDrop(dropSrc, this.time / 60, this.gearLevel()));
@@ -1796,7 +1854,7 @@ export class EchoGame {
       const id = pick(ECO_POOL);
       this.pickups.push({ kind: "echoOrb", x: e.x, y: e.y, used: false, ecoId: id, manual: true });
       this.float(e.x, e.y - 28, "ECO", "#c4b5fd");
-    } else if (Math.random() < 0.045) {
+    } else if (Math.random() < 0.025) {
       this.pickups.push({ kind: "chest", x: e.x, y: e.y, used: false });
     }
   }
@@ -1838,6 +1896,10 @@ export class EchoGame {
       p.xp -= p.nextXp;
       p.level += 1;
       p.nextXp = Math.floor(p.nextXp * 1.22 + 8);
+      this.pendingLevelUps += 1;
+    }
+    if (this.pendingLevelUps > 0 && this.screen !== "levelup") {
+      this.pendingLevelUps -= 1;
       this.openLevelUp();
     }
   }
@@ -2187,7 +2249,8 @@ export class EchoGame {
     if (level >= this.meta.levelUnlocked) this.meta.levelUnlocked = next;
     this.meta.levelSelected = this.meta.levelUnlocked;
     const special = level % LEVEL_CHEST_EVERY === 0;
-    const items = rollLevelReward(level, special, LEVEL_CHEST_ITEMS);
+    const rewardDue = special || level % 3 === 0;
+    const items = rewardDue ? rollLevelReward(level, special, LEVEL_CHEST_ITEMS) : [];
     for (const item of items) this.grantGear(item);
     this.levelResult = { level, next, special, items };
   }
@@ -2266,17 +2329,78 @@ export class EchoGame {
     }
   }
 
-  private drawProp(pr: Prop, camX: number, camY: number) {
-    const im = this.sprites[`prop_${pr.kind}`];
-    if (!im || pr.broken) return;
+  private drawFallbackProp(pr: Prop, x: number, y: number) {
     const ctx = this.ctx;
-    const dw = im.width * pr.s;
-    const dh = im.height * pr.s;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(pr.s, pr.s);
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+
+    if (pr.kind === "rock") {
+      ctx.fillStyle = "#586174";
+      ctx.strokeStyle = "#aab4c7";
+      ctx.beginPath();
+      ctx.moveTo(-28, -5);
+      ctx.lineTo(-22, -30);
+      ctx.lineTo(-4, -43);
+      ctx.lineTo(22, -28);
+      ctx.lineTo(30, -5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (pr.kind === "crystal") {
+      ctx.fillStyle = "#45cde8";
+      ctx.strokeStyle = "#b7f6ff";
+      ctx.beginPath();
+      ctx.moveTo(0, -52);
+      ctx.lineTo(22, -23);
+      ctx.lineTo(12, -3);
+      ctx.lineTo(-14, -3);
+      ctx.lineTo(-23, -25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#d7fbff";
+      ctx.beginPath();
+      ctx.moveTo(0, -48);
+      ctx.lineTo(2, -7);
+      ctx.stroke();
+    } else if (pr.kind === "tree") {
+      ctx.fillStyle = "#76533d";
+      ctx.fillRect(-6, -28, 12, 28);
+      ctx.fillStyle = "#245c4b";
+      ctx.strokeStyle = "#6abf91";
+      ctx.beginPath();
+      ctx.arc(0, -37, 25, 0, TAU);
+      ctx.arc(-16, -25, 17, 0, TAU);
+      ctx.arc(16, -25, 17, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#626b83";
+      ctx.strokeStyle = "#c1c9d8";
+      ctx.fillRect(-15, -58, 30, 55);
+      ctx.strokeRect(-15, -58, 30, 55);
+      ctx.fillRect(-22, -64, 44, 9);
+      ctx.fillRect(-22, -5, 44, 8);
+    }
+
+    ctx.restore();
+  }
+
+  private drawProp(pr: Prop, camX: number, camY: number) {
+    if (pr.broken) return;
+    const im = this.sprites[`prop_${pr.kind}`];
+    const dw = (im?.width ?? 64) * pr.s;
+    const dh = (im?.height ?? 72) * pr.s;
+    const ctx = this.ctx;
     const x = pr.x - camX;
     const y = pr.y - camY;
     ctx.save();
     if (pr.cd > 0) ctx.globalAlpha = 0.45;
-    ctx.drawImage(im, x - dw / 2, y - dh, dw, dh);
+    if (im?.width) ctx.drawImage(im, x - dw / 2, y - dh, dw, dh);
+    else this.drawFallbackProp(pr, x, y);
     ctx.restore();
     if (pr.kind === "rock" && pr.hp < pr.maxHp) {
       const w = 22;
@@ -2286,16 +2410,8 @@ export class EchoGame {
       ctx.fillRect(x - w / 2, y - dh - 6, w * clamp(pr.hp / pr.maxHp, 0, 1), 3);
     }
     if (Math.hypot(pr.x - this.player.x, pr.y - this.player.y) < 150) {
-      const tag =
-        pr.cd > 0
-          ? "En reposo"
-          : pr.kind === "crystal"
-            ? "E  Luz"
-            : pr.kind === "tree"
-              ? "E  Recuerdo"
-              : pr.kind === "pillar"
-                ? "E  Pulso"
-                : "E  Romper";
+      const tag = pr.cd > 0 ? "En reposo" : pr.kind === "crystal" ? "E  Luz" :
+        pr.kind === "tree" ? "E  Recuerdo" : pr.kind === "pillar" ? "E  Pulso" : "E  Romper";
       this.drawTag(x, y - dh - 8, tag);
     }
   }
@@ -2460,6 +2576,24 @@ export class EchoGame {
     this.drawSheet(im, frame, x, y, 26, false, false, 2, 2);
   }
 
+  private drawFallbackPickup(k: Pickup, x: number, y: number) {
+    const ctx = this.ctx;
+    ctx.save(); ctx.translate(x, y); ctx.lineWidth = 3;
+    if (k.kind === "chest") {
+      ctx.fillStyle = "#8b5a35"; ctx.strokeStyle = "#f2c879";
+      ctx.fillRect(-22, -25, 44, 23); ctx.strokeRect(-22, -25, 44, 23);
+      ctx.fillStyle = "#d9a441"; ctx.fillRect(-25, -31, 50, 9); ctx.strokeRect(-25, -31, 50, 9);
+      ctx.fillStyle = "#f7e3a1"; ctx.fillRect(-3, -22, 6, 12);
+    } else {
+      ctx.fillStyle = "#515d78"; ctx.strokeStyle = "#a9c4e8";
+      ctx.fillRect(-24, -10, 48, 10); ctx.strokeRect(-24, -10, 48, 10);
+      ctx.fillRect(-18, -36, 8, 27); ctx.fillRect(10, -36, 8, 27);
+      ctx.strokeRect(-18, -36, 8, 27); ctx.strokeRect(10, -36, 8, 27);
+      ctx.fillStyle = "#5ce8ff"; ctx.beginPath(); ctx.arc(0, -28, 8, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   private drawPickup(k: Pickup, camX: number, camY: number) {
     const x = k.x - camX;
     const y = k.y - camY;
@@ -2487,8 +2621,10 @@ export class EchoGame {
     }
     const key = k.kind === "chest" ? "prop_chest" : "prop_altar";
     const im = this.sprites[key];
-    if (im) this.ctx.drawImage(im, x - im.width / 2, y - im.height, im.width, im.height);
-    if (near) this.drawTag(x, y - (im?.height ?? 48) - 6, k.kind === "chest" ? "E  Cofre" : "E  Altar");
+    const height = im?.height ?? 56;
+    if (im?.width) this.ctx.drawImage(im, x - im.width / 2, y - im.height, im.width, im.height);
+    else this.drawFallbackPickup(k, x, y);
+    if (near) this.drawTag(x, y - height - 6, k.kind === "chest" ? "E  Cofre" : "E  Altar");
   }
 
   private drawTag(x: number, y: number, text: string) {
