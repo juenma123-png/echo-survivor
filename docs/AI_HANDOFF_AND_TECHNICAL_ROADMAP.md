@@ -9,8 +9,9 @@
 - Rama de trabajo: `kai/engine-fixes-and-ai-handoff-2026-11-04`.
 - Esta rama parte de la rama del PR #1 para conservar sus cambios de balance y estructuras.
 - PR #1: https://github.com/juenma123-png/echo-survivor/pull/1
+- PR #2 (borrador): https://github.com/juenma123-png/echo-survivor/pull/2
 - No hacer commits directamente en `main`. Integrar por Pull Request.
-- Replit queda fuera del flujo de trabajo.
+- **Replit vuelve a formar parte del flujo de QA**: usar el proyecto https://replit.com/@juenma123/echo-survivor para ejecutar y observar el juego. Antes de probar, verificar que Replit está en la rama de trabajo y en el commit esperado; no asumir que está sincronizado.
 - Grok se encarga del arte/animaciones de enemigos; las demás IA deben respetar el contrato de sprites y no cambiar balance/IA/hitboxes sin coordinación.
 
 ## Cambios heredados del PR #1
@@ -45,14 +46,6 @@ Se conservan en esta rama:
 15. Revisar `setStick`/estado React durante pointermove y el doble listener resize.
 16. Añadir tests específicos del motor y del equipo; actualmente las pruebas se concentran en scripts/auth/app-data.
 
-### Arquitectura y deuda
-- El sistema antiguo `GEAR`/tool/relic convive con inventario moderno por ranuras; no eliminar sin revisar migración y partidas antiguas.
-- El módulo P2P existe pero no está conectado a una ruta de señalización ni al loop del juego.
-- Hay infraestructura de auth/app-data que parece venir de la plantilla; no borrar sin validar requisitos del despliegue.
-- `.vercel/output` contiene artefactos generados versionados; decidir si son necesarios para el hosting antes de retirarlos.
-- No existía workflow de CI; añadirlo sin ejecutar migraciones de base de datos en el job de build.
-- Revisar código muerto y helpers aparentemente no usados con búsqueda global antes de eliminar.
-
 ## Contrato de colaboración para IA de arte (Grok)
 
 - El motor actual dibuja enemigos con spritesheets de 2×2 y 4 frames.
@@ -63,53 +56,67 @@ Se conservan en esta rama:
 - Proponer estados idle/walk/attack/death; no asumir que el motor ya cambia correctamente entre todos ellos. Coordinar la conexión de estados antes de renombrar hojas.
 - Verificar que ningún frame quede recortado y que el tamaño visual sea coherente entre enemigos.
 
-## Plan futuro de implementación
+## Plan de trabajo y QA (orden obligatorio recomendado)
 
-### Fase 1 — estabilidad del motor
-- Cerrar y revisar los cambios de esta rama.
-- Corregir cola de level-ups, dash, límite de enemigos, frecuencia del HUD y distancia de contacto.
-- Revisar preferencias de audio y ciclo de vida del motor.
-- Añadir pruebas unitarias de reglas puras y pruebas de regresión donde el diseño del motor lo permita.
+### Fase 0 — sincronización y línea base
+- Confirmar en GitHub el commit exacto de la rama de trabajo.
+- Confirmar que Replit está en esa misma rama y commit; registrar cualquier diferencia antes de tocar archivos.
+- Comprobar que el árbol de trabajo está limpio y que no hay tareas/ejecuciones previas en curso.
+- Guardar el resultado de la línea base antes de aplicar nuevas correcciones.
 
-### Fase 2 — integridad de progreso
-- Auditar `readMeta`, `writeMeta`, `grantGear`, `completeLevel`, equipar/desmontar.
-- Definir explícitamente qué ocurre con el botín si el inventario está lleno.
-- Garantizar que UI, inventario y guardado muestran el mismo resultado.
-- Mantener la pérdida de gemas al morir como decisión de diseño salvo nueva instrucción del creador.
+### Fase 1 — pruebas automatizadas y estabilidad del motor
+- Ejecutar instalación reproducible y registrar versión de Node/npm.
+- Ejecutar typecheck, lint, suite de tests portable/CI y build.
+- Ejecutar pruebas de regresión de dash vertical/diagonal, cola de level-ups, límite global de enemigos, distancia de contacto, ciclo de vida del motor, audio y guardado.
+- Si una prueba falla, identificar si es fallo real, fixture ausente o entorno; no ocultar fallos ni rebajar cobertura solo para poner CI en verde.
+- Corregir fallos confirmados en la rama de trabajo, con cambios pequeños y tests que reproduzcan el problema.
+- No editar `main`, no hacer merge ni publicar despliegues.
 
-### Fase 3 — rendimiento móvil
-- Medir antes/después: HUD, colisiones, separación de enemigos, partículas, gradientes y ordenación de sprites.
-- Cachear colliders y reducir trabajo fuera de cámara solo si no altera colisiones/jugabilidad.
-- Mantener resolución lógica 16:9 y controles táctiles.
-- Evitar micro-optimizaciones sin medición.
+### Fase 2 — pruebas funcionales en navegador
+- Verificar inicio, menú/plaza, continuar/nueva partida, movimiento WASD/flechas, dash, ataque automático, daño recibido, muerte y reinicio.
+- Verificar enemigos normales, élites, jefes, límites de spawn y colisiones.
+- Verificar XP, subida de varios niveles seguidos, selección de mejoras y que ninguna elección se pierda.
+- Verificar cofres, recompensas, equipo, inventario lleno, equipar/desmontar y guardado/carga.
+- Verificar Ecos, Cordura y pérdida de gemas al morir según el diseño actual.
+- Registrar pasos, resultado esperado, resultado real y evidencia; no marcar como probado algo que solo se inspeccionó estáticamente.
 
-### Fase 4 — calidad y mantenimiento
-- Validación estricta de guardado y migraciones compatibles.
-- CI: install, typecheck, lint, tests y build de desarrollo.
-- Añadir pruebas del motor; no confundir compilación con prueba visual.
-- Revisar archivos generados, dependencias y código muerto con evidencia.
+### Fase 3 — pruebas móviles y rendimiento
+- Probar joystick táctil, dash/acciones, orientación y distintas resoluciones.
+- Medir FPS, memoria y respuesta con oleadas pobladas y partidas largas.
+- Buscar errores de consola, fugas/listeners duplicados y degradación progresiva.
+- Optimizar solo con mediciones comparables antes/después y sin cambiar el comportamiento del juego.
+
+### Fase 4 — balance y experiencia
+- Evaluar ritmo de oleadas, dificultad, frecuencia de recompensas y riesgo/recompensa.
+- Mantener la pérdida de gemas al morir como decisión de diseño salvo nueva instrucción del creador; medir su impacto antes de proponer cambios.
+- Revisar que las mejoras tengan efecto comprensible y que el inventario/recompensas comuniquen el resultado real.
+- No retocar balance durante la depuración de fallos de motor salvo que sea imprescindible y quede separado.
 
 ### Fase 5 — animación e identidad
 - Integrar las hojas nuevas de Grok con un contrato explícito de estados.
 - Añadir transiciones visuales idle/walk/attack/death sin alterar gameplay.
 - Validar legibilidad y rendimiento en móvil.
+- Mantener arte y lógica en cambios/PR separados cuando sea posible.
 
 ## Reglas de trabajo para otras IA
 
 1. Leer este documento antes de editar.
 2. Consultar la rama y el commit más recientes; este documento puede quedar desactualizado.
 3. No sobrescribir trabajo ajeno ni hacer cambios en `main`.
-4. Crear rama o trabajar en la rama asignada; usar PR para integrar.
+4. Trabajar en la rama asignada; usar PR para integrar.
 5. No declarar tests/build/QA como exitosos si no se ejecutaron.
 6. No añadir dependencias sin justificar necesidad, tamaño y alternativa.
 7. Separar cambios de arte, lógica, balance y contenido para facilitar revisión.
 8. Actualizar este documento con cambios, decisiones, riesgos, pruebas ejecutadas y pendientes.
 9. No borrar sistemas heredados ni datos guardados sin plan de migración.
 10. Mantener los comentarios y textos de juego en español salvo que el producto requiera otro idioma.
+11. Toda corrección debe incluir una prueba reproducible cuando sea viable.
+12. Informar los fallos sin maquillarlos; distinguir pruebas automatizadas, manuales, visuales y móviles.
 
 ## Estado de verificación
 
 - Cambios descritos en esta rama: revisión estática por IA.
 - Typecheck y lint se ejecutan en CI. El primer intento de tests completos reveló dependencias de fixtures locales ignorados en `.grok/`; se separó un subconjunto portable para CI. Resultado de la nueva ejecución: pendiente.
-- Prueba visual en navegador y móvil: pendiente.
+- Prueba visual inicial en Replit: se confirmó que la pantalla inicial carga; no se validaron controles ni gameplay.
+- Prueba visual completa en navegador y móvil: pendiente.
 - No afirmar que los bugs están resueltos en runtime hasta ejecutar pruebas.
